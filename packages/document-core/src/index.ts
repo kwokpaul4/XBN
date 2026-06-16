@@ -1,15 +1,11 @@
 // Reusable document substrate (PHASES.md §1.5).
 //
-// This package is intentionally empty at Phase 1.1 — only the workspace shell exists.
-// Phase 1.5 lands:
-//   - documents / document_versions / document_links / document_audit_log / attachments tables (via @xbn/db)
-//   - state-machine factory
-//   - five universal operations (publish / acknowledge / supersede / cancel / link)
-//   - document numbering (pluggable: network vs external)
-//   - link-type registry
-//   - trading-relationship guard
-//   - body-schema (Zod) registry
-//   - notification emitter
-//   - attachment storage abstraction
+// Stage A complete: full Prisma schema in @xbn/db.
+// Stage B (this commit): pure-TS primitives.
+// Stage C: DB-backed primitives (repository, guard, publish/ack/supersede/cancel/link).
+// Stage D: notification emitter (pg-boss) and S3/MinIO attachment abstraction.
 
-export const placeholder = 'xbn-document-core';
+export * from './state-machine.js';
+export * from './link-registry.js';
+export * from './body-schema-registry.js';
+export * from './numbering.js';

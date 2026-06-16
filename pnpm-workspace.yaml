@@ -5,4 +5,6 @@ packages:
 # Build scripts approved to run during `pnpm install`. pnpm 11+ blocks native
 # postinstall scripts by default; we whitelist the ones we trust.
 allowBuilds:
+  '@prisma/engines': true
   esbuild: true
+  prisma: true

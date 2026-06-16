@@ -1,0 +1,430 @@
+// XBN — full Phase 1 Prisma schema.
+//
+// This schema underpins:
+//   - Phase 1.2 (Identity & auth)        → User, UserOrgMembership, UserSession
+//   - Phase 1.3 (Org & trading partner)  → Org, OrgIdentifier, TradingRelationship, RelationshipInvitation
+//   - Phase 1.5 (document-core)          → Document, DocumentVersion, DocumentLink, DocumentAuditLog, Attachment, NotificationOutbox
+//
+// Naming conventions:
+//   - Tables: snake_case (Postgres-idiomatic) via @@map
+//   - Columns: snake_case via @map
+//   - Models: PascalCase (Prisma client convention)
+//   - Enums: UPPER_SNAKE values (matches PHASES.md)
+//
+// Invariants enforced HERE at the schema level:
+//   - DocumentVersion is INSERT-only — DocumentVersion has no updated_at; the (document_id, version_number) unique key + repository code reject mutations.
+//   - DocumentLink uniqueness on (from_document_id, to_document_id, link_type) — prevents double-billing in summary invoicing (PHASES.md §2.6).
+//   - DocumentAuditLog has no updated_at — append-only by convention; repository never UPDATEs.
+//   - TradingRelationship uniqueness on (buyer_org_id, supplier_org_id) — one relationship per pair.
+//
+// Invariants enforced in CODE (document-core, not schema):
+//   - State-machine transitions
+//   - Link-type validity per document-type pair
+//   - Trading-relationship guard on every document mutation
+//   - Document numbering (sequential per issuer + type)
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1.2 — Identity & auth
+// ---------------------------------------------------------------------------
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  // Lucia stores password hash here (Argon2id). Null until set.
+  passwordHash    String?   @map("password_hash")
+  displayName     String?   @map("display_name")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  memberships UserOrgMembership[]
+  sessions    UserSession[]
+
+  // Audit-log actor relation (named so Prisma can disambiguate)
+  auditActions DocumentAuditLog[]       @relation("AuditActor")
+  invitations  RelationshipInvitation[] @relation("InvitationCreator")
+
+  @@map("users")
+}
+
+// One row per (user, org). A user CAN belong to multiple orgs (network admins,
+// consultants). Role is scoped to the membership, not the user — same person
+// could be SUPPLIER_ADMIN at Org A and SUPPLIER_USER at Org B.
+model UserOrgMembership {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  orgId     String   @map("org_id")
+  role      OrgRole
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId])
+  @@index([orgId])
+  @@map("user_org_memberships")
+}
+
+// Lucia-compatible session table. Separate from JWT; sessions back the
+// browser cookie path. JWTs are issued for API access from sessions.
+model UserSession {
+  id        String   @id // Lucia generates the session id
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_sessions")
+}
+
+enum OrgRole {
+  BUYER_USER
+  BUYER_ADMIN
+  SUPPLIER_USER
+  SUPPLIER_ADMIN
+  NETWORK_ADMIN
+
+  @@map("org_role")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1.3 — Org, trading partner, invitations
+// ---------------------------------------------------------------------------
+
+model Org {
+  id          String   @id @default(cuid())
+  legalName   String   @map("legal_name")
+  displayName String   @map("display_name")
+  orgType     OrgType  @map("org_type")
+  // Free-form contact / address payload. Avoid a fixed columnar address —
+  // it varies wildly by country and we don't query into it.
+  contact     Json     @default("{}") @db.JsonB
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  identifiers OrgIdentifier[]
+  memberships UserOrgMembership[]
+
+  // Two-way relationships: an org is buyer in some, supplier in others.
+  buyerRelationships    TradingRelationship[] @relation("BuyerOrg")
+  supplierRelationships TradingRelationship[] @relation("SupplierOrg")
+
+  // Documents this org issued / received
+  issuedDocuments   Document[] @relation("DocumentIssuer")
+  receivedDocuments Document[] @relation("DocumentRecipient")
+
+  // Audit log entries by this org
+  auditEntries DocumentAuditLog[] @relation("AuditOrg")
+
+  @@map("orgs")
+}
+
+enum OrgType {
+  BUYER
+  SUPPLIER
+  BOTH
+
+  @@map("org_type")
+}
+
+// External / domain-specific identifiers an org goes by. Multiple per org;
+// uniqueness is on (scheme, value) to prevent two orgs claiming the same DUNS.
+model OrgIdentifier {
+  id        String   @id @default(cuid())
+  orgId     String   @map("org_id")
+  scheme    String // 'DUNS', 'GLN', 'TAX_ID_US_EIN', 'TAX_ID_DE_USTID', etc.
+  value     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([scheme, value])
+  @@index([orgId])
+  @@map("org_identifiers")
+}
+
+// THE central join entity. A document can only flow on an active relationship.
+// Per-relationship config captured as columns where queryable, JSONB where free-form.
+model TradingRelationship {
+  id            String             @id @default(cuid())
+  buyerOrgId    String             @map("buyer_org_id")
+  supplierOrgId String             @map("supplier_org_id")
+  status        RelationshipStatus
+  establishedAt DateTime?          @map("established_at")
+  terminatedAt  DateTime?          @map("terminated_at")
+
+  // Per-relationship config (PHASES.md §1.3)
+  // What the buyer calls this supplier in their own ERP — used when buyer-issued docs
+  // need to carry the buyer-internal supplier id alongside the network id.
+  buyerInternalSupplierId String?              @map("buyer_internal_supplier_id")
+  // List of enabled document types on this relationship. Strings, not enum, because
+  // document_type grows per phase and we don't want migrations for new types.
+  enabledDocumentTypes    String[]             @default([]) @map("enabled_document_types")
+  paymentTermsRef         String?              @map("payment_terms_ref")
+  defaultCurrency         String?              @map("default_currency") // ISO-4217
+  defaultIncoterms        String?              @map("default_incoterms") // EXW, FOB, CIF, ...
+  documentNumberSource    DocumentNumberSource @default(NETWORK) @map("document_number_source")
+  // Phase 2.6 invoicing toggle
+  summaryInvoicingEnabled Boolean              @default(false) @map("summary_invoicing_enabled")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  buyerOrg    Org                      @relation("BuyerOrg", fields: [buyerOrgId], references: [id])
+  supplierOrg Org                      @relation("SupplierOrg", fields: [supplierOrgId], references: [id])
+  invitations RelationshipInvitation[]
+  documents   Document[]
+
+  @@unique([buyerOrgId, supplierOrgId])
+  @@index([supplierOrgId])
+  @@map("trading_relationships")
+}
+
+enum RelationshipStatus {
+  PENDING_INVITATION
+  ACTIVE
+  SUSPENDED
+  TERMINATED
+
+  @@map("relationship_status")
+}
+
+enum DocumentNumberSource {
+  NETWORK // XBN issues sequential numbers per (issuer, doc_type)
+  EXTERNAL // ERP-issued numbers; we just store them
+
+  @@map("document_number_source")
+}
+
+model RelationshipInvitation {
+  id                    String           @id @default(cuid())
+  tradingRelationshipId String?          @map("trading_relationship_id")
+  // The inviter (buyer side); the invitee email — invitee user may not exist yet.
+  invitedByUserId       String           @map("invited_by_user_id")
+  invitedEmail          String           @map("invited_email")
+  invitedOrgName        String           @map("invited_org_name")
+  token                 String           @unique
+  status                InvitationStatus @default(PENDING)
+  expiresAt             DateTime         @map("expires_at")
+  acceptedAt            DateTime?        @map("accepted_at")
+  declinedAt            DateTime?        @map("declined_at")
+  createdAt             DateTime         @default(now()) @map("created_at")
+
+  invitedBy           User                 @relation("InvitationCreator", fields: [invitedByUserId], references: [id])
+  tradingRelationship TradingRelationship? @relation(fields: [tradingRelationshipId], references: [id])
+
+  @@index([invitedEmail])
+  @@map("relationship_invitations")
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+
+  @@map("invitation_status")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1.5 — Document substrate
+// ---------------------------------------------------------------------------
+// PHASES.md §1.5: documents + document_versions + document_links + document_audit_log + attachments.
+// THE versioning + lineage + audit-log triad. CLAUDE.md cross-cutting concern #2.
+
+model Document {
+  id                    String  @id @default(cuid())
+  // Document type identifier. Not an enum — grows per phase (GENERIC_DOCUMENT,
+  // PO, ORDER_CONFIRMATION, ASN, ..., FORECAST_PUBLISH, ...). Validated at the
+  // application layer against the type registry in document-core.
+  documentType          String  @map("document_type")
+  // Human-facing number assigned by issuer (NETWORK or EXTERNAL per relationship config).
+  documentNumber        String  @map("document_number")
+  issuerOrgId           String  @map("issuer_org_id")
+  recipientOrgId        String  @map("recipient_org_id")
+  tradingRelationshipId String  @map("trading_relationship_id")
+  // The current head of the version chain. Updates on every supersession.
+  currentVersionId      String? @unique @map("current_version_id")
+  // String, not enum — same reasoning as documentType. Per-type state machines
+  // declared in document-core.
+  status                String
+
+  // Indexed scalars surfaced from the canonical body for fast cross-type queries
+  // (PHASES.md §1.5 documents-table description, §4.1 inbox/search).
+  referenceNumber String?   @map("reference_number")
+  totalAmount     Decimal?  @map("total_amount") @db.Decimal(18, 4)
+  currency        String? // ISO-4217
+  issueDate       DateTime? @map("issue_date")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  issuerOrg           Org                 @relation("DocumentIssuer", fields: [issuerOrgId], references: [id])
+  recipientOrg        Org                 @relation("DocumentRecipient", fields: [recipientOrgId], references: [id])
+  tradingRelationship TradingRelationship @relation(fields: [tradingRelationshipId], references: [id])
+  currentVersion      DocumentVersion?    @relation("CurrentVersion", fields: [currentVersionId], references: [id])
+
+  versions      DocumentVersion[]  @relation("AllVersions")
+  outgoingLinks DocumentLink[]     @relation("LinkFrom")
+  incomingLinks DocumentLink[]     @relation("LinkTo")
+  auditLog      DocumentAuditLog[]
+  attachments   Attachment[]
+
+  // Per-issuer per-type number uniqueness. Prevents reuse of a PO number within
+  // the same buyer org — required for NETWORK numbering, sane invariant for EXTERNAL too.
+  @@unique([issuerOrgId, documentType, documentNumber])
+  @@index([recipientOrgId, status])
+  @@index([tradingRelationshipId])
+  @@index([documentType, status])
+  @@index([issueDate])
+  @@map("documents")
+}
+
+// IMMUTABLE. Every mutation to a document body inserts a new row here. There is
+// no updated_at — once written, never changed. (PHASES.md §1.5, CLAUDE.md "triad".)
+model DocumentVersion {
+  id            String   @id @default(cuid())
+  documentId    String   @map("document_id")
+  versionNumber Int      @map("version_number")
+  // Canonical document body. Validated at write time against the Zod schema
+  // registered for the document type in document-core.
+  body          Json     @db.JsonB
+  createdById   String   @map("created_by_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  changeReason  String?  @map("change_reason")
+
+  document  Document  @relation("AllVersions", fields: [documentId], references: [id], onDelete: Cascade)
+  // Reverse of Document.currentVersion — at most one Document per DocumentVersion is "current".
+  currentOf Document? @relation("CurrentVersion")
+
+  // The natural key. Both halves of immutability:
+  //   - same (document_id, version_number) twice = error
+  //   - version_number is monotonic per document, repository sets it to MAX+1
+  @@unique([documentId, versionNumber])
+  @@index([documentId])
+  @@map("document_versions")
+}
+
+// DAG modelling lineage between documents (PHASES.md §1.5).
+// Many-to-many in both directions. Same (from, to, link_type) twice rejected —
+// this is the no-double-billing guard for SUMMARY invoicing (§2.6).
+model DocumentLink {
+  id              String   @id @default(cuid())
+  fromDocumentId  String   @map("from_document_id")
+  toDocumentId    String   @map("to_document_id")
+  // String, not enum — link types grow per phase (FULFILLS, ACKNOWLEDGES, INVOICES,
+  // CALLS_OFF, RESPONDS_TO, SUPERSEDES, CANCELS, etc.). Validity per (from_type, to_type)
+  // checked in document-core's link registry.
+  linkType        String   @map("link_type")
+  createdAt       DateTime @default(now()) @map("created_at")
+  createdByUserId String   @map("created_by_user_id")
+
+  from Document @relation("LinkFrom", fields: [fromDocumentId], references: [id], onDelete: Cascade)
+  to   Document @relation("LinkTo", fields: [toDocumentId], references: [id], onDelete: Cascade)
+
+  @@unique([fromDocumentId, toDocumentId, linkType])
+  @@index([toDocumentId, linkType])
+  @@index([fromDocumentId, linkType])
+  @@map("document_links")
+}
+
+// APPEND-ONLY. Every operation on a document writes a row here.
+// Versions = what the doc said. Audit log = what was done and by whom.
+model DocumentAuditLog {
+  id          String      @id @default(cuid())
+  documentId  String      @map("document_id")
+  actorUserId String      @map("actor_user_id")
+  actorOrgId  String      @map("actor_org_id")
+  action      AuditAction
+  // Action-specific context (which version, which link, which attachment, transition delta).
+  payload     Json        @default("{}") @db.JsonB
+  occurredAt  DateTime    @default(now()) @map("occurred_at")
+
+  document  Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  actorUser User     @relation("AuditActor", fields: [actorUserId], references: [id])
+  actorOrg  Org      @relation("AuditOrg", fields: [actorOrgId], references: [id])
+
+  @@index([documentId, occurredAt])
+  @@index([actorOrgId, occurredAt])
+  @@map("document_audit_log")
+}
+
+enum AuditAction {
+  CREATED
+  PUBLISHED
+  ACKNOWLEDGED
+  STATUS_CHANGED
+  SUPERSEDED
+  CANCELLED
+  LINKED
+  UNLINKED
+  ATTACHMENT_ADDED
+  ATTACHMENT_REMOVED
+  READ
+
+  @@map("audit_action")
+}
+
+model Attachment {
+  id           String   @id @default(cuid())
+  documentId   String   @map("document_id")
+  // Optional — null means "applies to the document, not a specific version".
+  versionId    String?  @map("version_id")
+  storageKey   String   @map("storage_key") // S3 key in the configured bucket
+  filename     String
+  mimeType     String   @map("mime_type")
+  sizeBytes    BigInt   @map("size_bytes")
+  sha256       String // hex-encoded SHA-256 of the bytes
+  uploadedById String   @map("uploaded_by_id")
+  uploadedAt   DateTime @default(now()) @map("uploaded_at")
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([sha256]) // for dedup queries
+  @@map("attachments")
+}
+
+// ---------------------------------------------------------------------------
+// Notification outbox (consumed by pg-boss in Phase 4.5)
+// ---------------------------------------------------------------------------
+// Phase 1.5 wires the emitter; Phase 4.5 wires the consumer. Until then, rows
+// accumulate harmlessly.
+
+model NotificationOutbox {
+  id            String             @id @default(cuid())
+  recipientId   String             @map("recipient_id") // user id
+  eventType     String             @map("event_type") // 'DOCUMENT_PUBLISHED', 'DOCUMENT_ACKNOWLEDGED', etc.
+  documentId    String?            @map("document_id")
+  payload       Json               @default("{}") @db.JsonB
+  status        NotificationStatus @default(PENDING)
+  deliveredAt   DateTime?          @map("delivered_at")
+  failedAt      DateTime?          @map("failed_at")
+  failureReason String?            @map("failure_reason")
+  attempts      Int                @default(0)
+  createdAt     DateTime           @default(now()) @map("created_at")
+
+  @@index([status, createdAt])
+  @@index([recipientId])
+  @@map("notification_outbox")
+}
+
+enum NotificationStatus {
+  PENDING
+  DELIVERED
+  FAILED
+  CANCELLED
+
+  @@map("notification_status")
+}

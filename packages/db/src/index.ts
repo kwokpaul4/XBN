@@ -1,3 +1,9 @@
-// Prisma client export (PHASES.md §1.3, §1.5). Empty at Phase 1.1 — schema arrives later.
+// Re-export the generated Prisma client. Other packages import from here:
+//
+//   import { PrismaClient, Prisma } from '@xbn/db';
+//
+// The actual connection (driver adapter setup) is created at app boot,
+// not here — keeps this package free of runtime side effects.
 
-export const placeholder = 'xbn-db';
+export * from '../node_modules/.prisma/client/index.js';
+export { PrismaClient } from '../node_modules/.prisma/client/index.js';

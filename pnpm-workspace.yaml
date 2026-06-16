@@ -6,5 +6,8 @@ packages:
 # postinstall scripts by default; we whitelist the ones we trust.
 allowBuilds:
   '@prisma/engines': true
+  cpu-features: true
   esbuild: true
   prisma: true
+  protobufjs: true
+  ssh2: true

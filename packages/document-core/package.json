@@ -1,0 +1,19 @@
+{
+  "name": "@xbn/document-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Reusable document substrate: versioning, lineage, audit, state machines, link registry, trading-relationship guard, body-schema registry, notifications, attachments. Implemented in Phase 1.5.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.2"
+  }
+}

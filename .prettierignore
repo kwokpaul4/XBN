@@ -1,0 +1,14 @@
+# Generated / locked files
+pnpm-lock.yaml
+node_modules/
+dist/
+build/
+coverage/
+.pnpm-store/
+
+# Project docs — formatted by hand, prefer narrative line wrapping over Prettier's
+# default mechanical reflow. Re-enable per-file later if a doc gets unwieldy.
+PHASES.md
+TASKS.md
+CLAUDE.md
+README.md

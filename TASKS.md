@@ -12,14 +12,14 @@ Living task list for the XBN buyer-supplier document-exchange network. Mirrors t
 
 | Phase | Tasks | Done | In progress | Blocked | Deferred |
 |---|---|---|---|---|---|
-| Phase 1 — Foundation | 6 | 0 | 1 | 5 | 0 |
+| Phase 1 — Foundation | 6 | 1 | 0 | 5 | 0 |
 | Phase 2 — Indirect procurement | 9 | 0 | 0 | 9 | 0 |
 | Phase 3 — Direct-materials SCC | 7 | 0 | 0 | 4 | 3 |
 | Phase 4 — Network features | 5 | 0 | 0 | 5 | 0 |
 | Phase 5 — Production readiness | 4 | 0 | 0 | 4 | 0 |
-| **Total** | **31** | **0** | **1** | **27** | **3** |
+| **Total** | **31** | **1** | **0** | **27** | **3** |
 
-**Currently unblocked (ready to work):** #1 Phase 1.1 — Monorepo & dev stack 🟡
+**Currently unblocked (ready to work):** #2 Phase 1.2 — Identity & authentication, #5 Phase 1.5 — document-core (both freed by #1 completing)
 
 ---
 
@@ -42,26 +42,27 @@ These are the gates that mark meaningful progress. Each milestone is reached whe
 
 The substrate. Every later phase reuses what ships here.
 
-### #1 — Phase 1.1: Monorepo & dev stack 🟡 in progress
+### #1 — Phase 1.1: Monorepo & dev stack ✅ completed
 
 **Spec:** [PHASES.md §1.1](./PHASES.md)
 **Blocked by:** *(none — start here)*
 **Blocks:** #2, #5
+**Completed:** 2026-06-16
 
-Set up pnpm workspaces with:
-- `apps/api` (NestJS)
-- `apps/web` (React + Vite)
-- `packages/document-core`
-- `packages/db`
-- `packages/shared-types`
+Delivered:
+- pnpm workspaces with `apps/api` (NestJS placeholder), `apps/web` (Vite placeholder), `packages/document-core`, `packages/db`, `packages/shared-types`
+- Toolchain pinned: Node 22 LTS (`.nvmrc`, `.tool-versions`), pnpm 11.7.0 (`packageManager` in root `package.json`)
+- TypeScript 5.7 strict (`tsconfig.base.json` with `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `verbatimModuleSyntax`); per-workspace `tsconfig.json` extends the base
+- ESLint 9 flat config (`eslint.config.mjs`) with typescript-eslint
+- Prettier 3 with `.prettierrc` and `.prettierignore` (project docs hand-formatted)
+- Vitest 3 wired per-workspace; Playwright installed at root
+- `docker-compose.yml` with Postgres 17, MinIO, MailHog (not yet brought up — Docker deferred until Task #5)
+- `.env.example` for local dev configuration
 
-Add `docker-compose.yml` with Postgres, MinIO, MailHog. Configure TypeScript strict, ESLint, Prettier, Vitest, Playwright.
+Acceptance: `pnpm install` clean ✅ · `pnpm -r typecheck` ✅ · `pnpm lint` ✅ · `pnpm format:check` ✅
 
-**Open decisions to make at start:**
-- pnpm version pin (10.x recommended)
-- Node version (22 LTS recommended)
-- Lucia vs Auth.js (Lucia recommended)
-- Single NestJS modular monolith confirmed?
+**Open decisions resolved:**
+- Node 22 LTS · pnpm 11.7.0 (Corepack pulled latest; we pinned that) · Lucia (deferred to #2 install) · single NestJS modular monolith confirmed
 
 ### #2 — Phase 1.2: Identity & authentication ⬜
 

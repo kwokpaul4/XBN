@@ -1,0 +1,53 @@
+# Local dev stack for XBN. Brings up Postgres, MinIO (S3-compatible), and MailHog.
+# Phase 1.1 includes this file but does NOT require it to be running until Phase 1.5
+# (document-core needs Postgres) and Phase 4.5 (notifications need MailHog).
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: xbn-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: xbn
+      POSTGRES_PASSWORD: xbn_dev
+      POSTGRES_DB: xbn
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U xbn -d xbn']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: xbn-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: xbn
+      MINIO_ROOT_PASSWORD: xbn_dev_minio
+    ports:
+      - '9000:9000' # S3 API
+      - '9001:9001' # Web console
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: xbn-mailhog
+    restart: unless-stopped
+    ports:
+      - '1025:1025' # SMTP
+      - '8025:8025' # Web UI
+
+volumes:
+  postgres-data:
+  minio-data:

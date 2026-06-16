@@ -59,7 +59,9 @@ export class PrismaNetworkNumberingStrategy implements NumberingStrategy {
     const lockKey = hashLockKey(`${request.issuerOrgId}|${request.documentType}`);
 
     // Hold the advisory lock for the rest of this transaction.
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(${lockKey})`;
+    // Use $executeRaw because pg_advisory_xact_lock returns void;
+    // $queryRaw insists on a deserialisable result.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey})`;
 
     // Read the current max for this (issuer, type, prefix). Matching on
     // `documentNumber LIKE prefix-%` rather than just (issuer, type) lets a

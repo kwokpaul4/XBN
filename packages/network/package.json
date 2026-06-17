@@ -1,0 +1,24 @@
+{
+  "name": "@xbn/network",
+  "version": "0.0.0",
+  "private": true,
+  "description": "XBN trading-partner network — Org, OrgIdentifier, TradingRelationship, RelationshipInvitation services.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@xbn/db": "workspace:*",
+    "@oslojs/encoding": "^1.1.0",
+    "@oslojs/crypto": "^1.0.1"
+  },
+  "devDependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.2"
+  }
+}

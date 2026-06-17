@@ -4,7 +4,7 @@ Living task list for the XBN buyer-supplier document-exchange network. Mirrors t
 
 **Legend:** ⬜ pending · 🟡 in progress · ✅ completed · 🔒 blocked (waiting on prerequisites) · 🕓 deferred
 
-**Last updated:** 2026-06-16
+**Last updated:** 2026-06-17
 
 ---
 
@@ -12,14 +12,18 @@ Living task list for the XBN buyer-supplier document-exchange network. Mirrors t
 
 | Phase | Tasks | Done | In progress | Blocked | Deferred |
 |---|---|---|---|---|---|
-| Phase 1 — Foundation | 6 | 1 | 0 | 5 | 0 |
+| Phase 1 — Foundation | 6 | 4 | 0 | 2 | 0 |
 | Phase 2 — Indirect procurement | 9 | 0 | 0 | 9 | 0 |
 | Phase 3 — Direct-materials SCC | 7 | 0 | 0 | 4 | 3 |
 | Phase 4 — Network features | 5 | 0 | 0 | 5 | 0 |
 | Phase 5 — Production readiness | 4 | 0 | 0 | 4 | 0 |
-| **Total** | **31** | **1** | **0** | **27** | **3** |
+| **Total** | **31** | **4** | **0** | **24** | **3** |
 
-**Currently unblocked (ready to work):** #2 Phase 1.2 — Identity & authentication, #5 Phase 1.5 — document-core (both freed by #1 completing)
+**Currently unblocked (ready to work):** #4 Phase 1.4 — Web portal shell
+
+**Test totals on `main`:** 85 (58 document-core + 15 auth + 12 network)
+
+**Substrate complete:** the data model, document operations, identity, multi-org membership, and trading-partner services all work end-to-end with integration tests against real Postgres + MinIO. M1 acceptance (vertical slice via portal) is the remaining Phase 1 work.
 
 ---
 
@@ -63,7 +67,7 @@ Add `docker-compose.yml` with Postgres, MinIO, MailHog. Configure TypeScript str
 - Lucia vs Auth.js (Lucia recommended)
 - Single NestJS modular monolith confirmed?
 
-### #2 — Phase 1.2: Identity & authentication ⬜
+### #2 — Phase 1.2: Identity & authentication ✅ completed (`2953196`)
 
 **Spec:** [PHASES.md §1.2](./PHASES.md)
 **Blocked by:** #1
@@ -71,7 +75,7 @@ Add `docker-compose.yml` with Postgres, MinIO, MailHog. Configure TypeScript str
 
 Lucia (or Auth.js) + JWT. Email/password, password reset, email verification, session management. Roles: `BUYER_USER`, `BUYER_ADMIN`, `SUPPLIER_USER`, `SUPPLIER_ADMIN`, `NETWORK_ADMIN`. Multi-org user support from day one. **No** Keycloak/SSO/SAML at MVP.
 
-### #5 — Phase 1.5: Generic document infrastructure (`document-core`) ⬜
+### #5 — Phase 1.5: Generic document infrastructure (`document-core`) ✅ completed (`d2649d4`)
 
 **Spec:** [PHASES.md §1.5](./PHASES.md)
 **Blocked by:** #1
@@ -98,7 +102,7 @@ The reusable substrate. **The most consequential single task in the project.**
 
 pg-boss with `notifications` queue wired in.
 
-### #3 — Phase 1.3: Org & trading-partner model ⬜
+### #3 — Phase 1.3: Org & trading-partner model ✅ completed (`c466123`)
 
 **Spec:** [PHASES.md §1.3](./PHASES.md)
 **Blocked by:** #2, #5

@@ -1,143 +1,26 @@
 /**
- * Documents HTTP surface. Composes @xbn/document-core: registers the
- * Phase 1 document types (GENERIC_DOCUMENT and the PO ↔ ORDER_CONFIRMATION
- * pair), wires the substrate, and exposes publish / supersede / transition /
- * link / attach.
+ * Documents HTTP surface. Composes @xbn/document-core with the per-type
+ * registry under apps/api/src/document-types/.
+ *
+ * Adding a new document type now means: drop a folder under document-types/,
+ * register it in document-types/registry.ts, done. No changes here.
  */
 
 import { Router } from 'express';
 import { z } from 'zod';
 import {
   AttachmentStorage,
-  BodySchemaRegistry,
-  defineStateMachine,
   link as linkOp,
-  LinkRegistry,
   PrismaNetworkNumberingStrategy,
   publish,
   supersede,
   acknowledge,
   TradingRelationshipGuard,
-  type StateMachine,
 } from '@xbn/document-core';
-import type { OrgRole, PrismaClient } from '@xbn/db';
+import type { PrismaClient } from '@xbn/db';
 
 import { authMiddleware, mustAuth } from '../auth-middleware.js';
-
-// ---------------------------------------------------------------------------
-// Phase 1 document-type registrations
-// ---------------------------------------------------------------------------
-//
-// In Phase 2 these will move into per-document-type modules. For Phase 1.4/1.6
-// we keep them inline so the M1 acceptance test can drive everything from
-// one place.
-
-type Role = OrgRole;
-
-const genericMachine: StateMachine<string, Role, unknown> = defineStateMachine<
-  string,
-  Role,
-  unknown
->({
-  initialState: 'PUBLISHED',
-  transitions: {
-    PUBLISHED: [
-      { to: 'CANCELLED', requiredRole: 'BUYER_ADMIN', actor: 'issuer' },
-      { to: 'CANCELLED', requiredRole: 'SUPPLIER_ADMIN', actor: 'issuer' },
-    ],
-    SUPERSEDED: [],
-    CANCELLED: [],
-  },
-});
-
-const poMachine: StateMachine<string, Role, unknown> = defineStateMachine<string, Role, unknown>({
-  initialState: 'DRAFT',
-  transitions: {
-    DRAFT: [
-      { to: 'ISSUED', requiredRole: 'BUYER_ADMIN', actor: 'issuer' },
-      { to: 'ISSUED', requiredRole: 'BUYER_USER', actor: 'issuer' },
-      { to: 'CANCELLED', requiredRole: 'BUYER_ADMIN', actor: 'issuer' },
-    ],
-    ISSUED: [
-      { to: 'ACKNOWLEDGED', requiredRole: 'SUPPLIER_USER', actor: 'recipient' },
-      { to: 'ACKNOWLEDGED', requiredRole: 'SUPPLIER_ADMIN', actor: 'recipient' },
-      { to: 'CANCELLED', requiredRole: 'BUYER_ADMIN', actor: 'issuer' },
-    ],
-    ACKNOWLEDGED: [],
-    CANCELLED: [],
-  },
-});
-
-const orderConfirmationMachine: StateMachine<string, Role, unknown> = defineStateMachine<
-  string,
-  Role,
-  unknown
->({
-  initialState: 'DRAFT',
-  transitions: {
-    DRAFT: [
-      { to: 'ISSUED', requiredRole: 'SUPPLIER_USER', actor: 'issuer' },
-      { to: 'ISSUED', requiredRole: 'SUPPLIER_ADMIN', actor: 'issuer' },
-    ],
-    ISSUED: [],
-  },
-});
-
-function buildBodySchemas(): BodySchemaRegistry {
-  const reg = new BodySchemaRegistry();
-  reg.register(
-    'GENERIC_DOCUMENT',
-    z.object({ note: z.string(), metadata: z.record(z.string(), z.any()).optional() }),
-  );
-  reg.register(
-    'PO',
-    z.object({
-      currency: z.string().length(3),
-      lines: z.array(
-        z.object({
-          sku: z.string(),
-          quantity: z.number().positive(),
-          unitPrice: z.number().nonnegative(),
-        }),
-      ),
-    }),
-  );
-  reg.register(
-    'ORDER_CONFIRMATION',
-    z.object({
-      poDocumentNumber: z.string(),
-      mode: z.enum(['FULL_ACCEPT', 'ACCEPT_WITH_CHANGES', 'REJECT']),
-    }),
-  );
-  return reg;
-}
-
-function buildLinkRegistry(): LinkRegistry {
-  const reg = new LinkRegistry();
-  reg.register({
-    fromType: 'GENERIC_DOCUMENT',
-    toType: 'GENERIC_DOCUMENT',
-    linkType: 'RESPONDS_TO',
-    inboundCardinality: 'many',
-    outboundCardinality: 'one',
-  });
-  reg.register({
-    fromType: 'ORDER_CONFIRMATION',
-    toType: 'PO',
-    linkType: 'ACKNOWLEDGES',
-    inboundCardinality: 'one',
-    outboundCardinality: 'one',
-  });
-  return reg;
-}
-
-const STATE_MACHINES: Record<string, StateMachine<string, Role, unknown>> = {
-  GENERIC_DOCUMENT: genericMachine,
-  PO: poMachine,
-  ORDER_CONFIRMATION: orderConfirmationMachine,
-};
-
-// ---------------------------------------------------------------------------
+import { buildDocumentTypeRegistry } from '../document-types/registry.js';
 
 const PublishBody = z.object({
   documentType: z.string(),
@@ -169,6 +52,18 @@ const AttachmentBody = z.object({
   bytesBase64: z.string(),
 });
 
+const ListQuery = z.object({
+  /** 'inbox' = recipientOrgId is the active org. 'outbox' = issuerOrgId. 'both' = either. */
+  box: z.enum(['inbox', 'outbox', 'both']).default('both'),
+  documentType: z.string().optional(),
+  status: z.string().optional(),
+  /** Counterparty filter — the *other* org. */
+  counterpartyOrgId: z.string().optional(),
+  /** Pagination, simple offset for Phase 2. */
+  limit: z.coerce.number().int().positive().max(200).default(50),
+  offset: z.coerce.number().int().nonnegative().default(0),
+});
+
 interface StorageConfig {
   endpoint: string;
   region: string;
@@ -183,10 +78,95 @@ export function documentsRouter(db: PrismaClient, storageCfg: StorageConfig): Ro
 
   const guard = new TradingRelationshipGuard(db);
   const numbering = new PrismaNetworkNumberingStrategy(db);
-  const bodySchemas = buildBodySchemas();
-  const linkRegistry = buildLinkRegistry();
+  const { bodySchemas, linkRegistry, stateMachines } = buildDocumentTypeRegistry();
   const storage = new AttachmentStorage(db, { ...storageCfg, forcePathStyle: true });
 
+  // ---------------------------------------------------------------------
+  // GET /documents — list scoped to the active org
+  // ---------------------------------------------------------------------
+  r.get('/documents', async (req, res) => {
+    const ctx = mustAuth(res);
+    if (!ctx) return;
+    if (!ctx.activeMembership) {
+      res.status(403).json({ error: 'no_active_membership' });
+      return;
+    }
+    const parsed = ListQuery.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'validation', issues: parsed.error.issues });
+      return;
+    }
+    const orgId = ctx.activeMembership.orgId;
+    const { box, documentType, status, counterpartyOrgId, limit, offset } = parsed.data;
+
+    const orgFilter =
+      box === 'inbox'
+        ? { recipientOrgId: orgId }
+        : box === 'outbox'
+          ? { issuerOrgId: orgId }
+          : { OR: [{ issuerOrgId: orgId }, { recipientOrgId: orgId }] };
+
+    const counterpartyFilter = counterpartyOrgId
+      ? {
+          OR: [
+            { issuerOrgId: counterpartyOrgId, recipientOrgId: orgId },
+            { issuerOrgId: orgId, recipientOrgId: counterpartyOrgId },
+          ],
+        }
+      : {};
+
+    const documents = await db.document.findMany({
+      where: {
+        AND: [
+          orgFilter,
+          counterpartyFilter,
+          ...(documentType !== undefined ? [{ documentType }] : []),
+          ...(status !== undefined ? [{ status }] : []),
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      skip: offset,
+      select: {
+        id: true,
+        documentType: true,
+        documentNumber: true,
+        issuerOrgId: true,
+        recipientOrgId: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        currency: true,
+        totalAmount: true,
+        issueDate: true,
+      },
+    });
+
+    const total = await db.document.count({
+      where: {
+        AND: [
+          orgFilter,
+          counterpartyFilter,
+          ...(documentType !== undefined ? [{ documentType }] : []),
+          ...(status !== undefined ? [{ status }] : []),
+        ],
+      },
+    });
+
+    res.json({
+      documents: documents.map((d) => ({
+        ...d,
+        totalAmount: d.totalAmount === null ? null : d.totalAmount.toString(),
+      })),
+      total,
+      limit,
+      offset,
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  // POST /documents — publish
+  // ---------------------------------------------------------------------
   r.post('/documents', async (req, res) => {
     const ctx = mustAuth(res);
     if (!ctx) return;
@@ -199,7 +179,7 @@ export function documentsRouter(db: PrismaClient, storageCfg: StorageConfig): Ro
       res.status(400).json({ error: 'validation', issues: parsed.error.issues });
       return;
     }
-    const stateMachine = STATE_MACHINES[parsed.data.documentType];
+    const stateMachine = stateMachines[parsed.data.documentType];
     if (!stateMachine) {
       res.status(400).json({ error: 'unknown_document_type' });
       return;
@@ -249,6 +229,7 @@ export function documentsRouter(db: PrismaClient, storageCfg: StorageConfig): Ro
     }
     res.json({
       ...doc,
+      totalAmount: doc.totalAmount === null ? null : doc.totalAmount.toString(),
       attachments: doc.attachments.map((a) => ({ ...a, sizeBytes: Number(a.sizeBytes) })),
     });
   });
@@ -310,11 +291,39 @@ export function documentsRouter(db: PrismaClient, storageCfg: StorageConfig): Ro
       res.status(404).json({ error: 'not_found' });
       return;
     }
-    const stateMachine = STATE_MACHINES[doc.documentType];
+    const stateMachine = stateMachines[doc.documentType];
     if (!stateMachine) {
       res.status(400).json({ error: 'unknown_document_type' });
       return;
     }
+
+    // PHASES.md §2.2 guard: a PO can only move to CHANGED if there's an
+    // ACCEPTED_BY_SUPPLIER PO_CHANGE that SUPERSEDES it. The state-machine
+    // factory is intentionally pure-TS (no DB access), so the guard runs
+    // here at the route boundary instead of inside the machine.
+    if (doc.documentType === 'PO' && parsed.data.toStatus === 'CHANGED') {
+      const acceptedChange = await db.documentLink.findFirst({
+        where: {
+          toDocumentId: id,
+          linkType: 'SUPERSEDES',
+          from: {
+            documentType: 'PO_CHANGE',
+            status: 'ACCEPTED_BY_SUPPLIER',
+          },
+        },
+      });
+      if (!acceptedChange) {
+        res.status(400).json({
+          error: 'transition_rejected',
+          reason: {
+            kind: 'precondition_failed',
+            detail: { kind: 'no_accepted_po_change' },
+          },
+        });
+        return;
+      }
+    }
+
     const actorSide = doc.issuerOrgId === ctx.activeMembership.orgId ? 'issuer' : 'recipient';
     const result = await acknowledge(
       { db },

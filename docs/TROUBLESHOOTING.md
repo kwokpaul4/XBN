@@ -181,12 +181,12 @@ docker exec xbn-postgres psql -U xbn -d xbn -c "
 
 The trading-relationship guard rejected it. Sub-causes:
 
-| `reason.detail.kind` | Meaning | Fix |
-|---|---|---|
-| `no_relationship` | No relationship between issuer and recipient | Create one with `POST /network/relationships` |
-| `relationship_inactive` | Status is `PENDING_INVITATION`, `SUSPENDED`, or `TERMINATED` | Activate it via `POST /network/relationships/:id/activate` |
-| `document_type_not_enabled` | `documentType` not in the relationship's `enabledDocumentTypes` | Update the relationship to add the type (no HTTP route yet — SQL or recreate) |
-| `summary_invoicing_not_enabled` | `invoiceMode: "SUMMARY"` but the relationship hasn't opted in | Set `summaryInvoicingEnabled: true` on the relationship |
+| `reason.detail.kind`            | Meaning                                                         | Fix                                                                           |
+| ------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `no_relationship`               | No relationship between issuer and recipient                    | Create one with `POST /network/relationships`                                 |
+| `relationship_inactive`         | Status is `PENDING_INVITATION`, `SUSPENDED`, or `TERMINATED`    | Activate it via `POST /network/relationships/:id/activate`                    |
+| `document_type_not_enabled`     | `documentType` not in the relationship's `enabledDocumentTypes` | Update the relationship to add the type (no HTTP route yet — SQL or recreate) |
+| `summary_invoicing_not_enabled` | `invoiceMode: "SUMMARY"` but the relationship hasn't opted in   | Set `summaryInvoicingEnabled: true` on the relationship                       |
 
 To inspect the relationship's current config:
 
@@ -210,14 +210,14 @@ Body fails Zod validation. The full validation issue list is in `reason.detail.i
 
 ### `400 { "error": "transition_rejected" }`
 
-| `reason.detail.kind` | Meaning |
-|---|---|
-| `unknown_source_state` | The current status isn't in the type's state machine config (shouldn't happen normally) |
-| `no_such_transition` | No edge `(fromStatus → toStatus)` declared |
-| `wrong_role` | Caller's active-org role isn't allowed for this edge |
-| `wrong_actor_side` | Caller's org is on the wrong side of the relationship (e.g. supplier trying to issue a PO transition) |
-| `guard_rejected` | Optional guard predicate returned false (no current document type uses guards) |
-| `repository` with `kind: "status_mismatch"` | Optimistic concurrency lost — another transition advanced the row first |
+| `reason.detail.kind`                        | Meaning                                                                                               |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `unknown_source_state`                      | The current status isn't in the type's state machine config (shouldn't happen normally)               |
+| `no_such_transition`                        | No edge `(fromStatus → toStatus)` declared                                                            |
+| `wrong_role`                                | Caller's active-org role isn't allowed for this edge                                                  |
+| `wrong_actor_side`                          | Caller's org is on the wrong side of the relationship (e.g. supplier trying to issue a PO transition) |
+| `guard_rejected`                            | Optional guard predicate returned false (no current document type uses guards)                        |
+| `repository` with `kind: "status_mismatch"` | Optimistic concurrency lost — another transition advanced the row first                               |
 
 To check what state machines actually allow, see `apps/api/src/routes/documents.ts` or [`API_REFERENCE.md`](./API_REFERENCE.md#state-machine-reference).
 

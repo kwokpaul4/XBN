@@ -4,7 +4,7 @@ Living task list for the XBN buyer-supplier document-exchange network. Mirrors t
 
 **Legend:** ⬜ pending · 🟡 in progress · ✅ completed · 🔒 blocked (waiting on prerequisites) · 🕓 deferred
 
-**Last updated:** 2026-06-18
+**Last updated:** 2026-06-19
 
 ---
 
@@ -13,17 +13,19 @@ Living task list for the XBN buyer-supplier document-exchange network. Mirrors t
 | Phase | Tasks | Done | In progress | Blocked | Deferred |
 |---|---|---|---|---|---|
 | Phase 1 — Foundation | 6 | **6** | 0 | 0 | 0 |
-| Phase 2 — Indirect procurement | 9 | 0 | 0 | 9 | 0 |
+| Phase 2 — Indirect procurement | 9 | **2** | 0 | 7 | 0 |
 | Phase 3 — Direct-materials SCC | 7 | 0 | 0 | 4 | 3 |
 | Phase 4 — Network features | 5 | 0 | 0 | 5 | 0 |
 | Phase 5 — Production readiness | 4 | 0 | 0 | 4 | 0 |
-| **Total** | **31** | **6** | **0** | **22** | **3** |
+| **Total** | **31** | **8** | **0** | **20** | **3** |
 
 **🎯 Milestone M1 reached** — Phase 1 substrate works end-to-end. The canonical PHASES.md Phase 1 verification choreography (org onboarding → trading relationship → GENERIC_DOCUMENT round-trip with attachment + supersede + cross-org rejection → PO ↔ ORDER_CONFIRMATION typed pair with state transitions audited) passes via supertest against real Postgres + MinIO.
 
-**Currently unblocked (ready to work):** #7 Phase 2.1 — Purchase Order (PO) starts Phase 2.
+**Phase 2 progress** — #7 PO and #8 PO_CHANGE complete. Full §2.1 lifecycle (DRAFT → ISSUED → ACKNOWLEDGED → IN_FULFILLMENT → CLOSED + CANCELLED/CHANGED) and §2.2 PO_CHANGE choreography (DRAFT → ISSUED → ACCEPTED/REJECTED with PO→CHANGED precondition guard) shipped with portal forms.
 
-**Test totals on `main`:** 89 (58 document-core + 15 auth + 12 network + 2 M1 acceptance + 2 portal smoke).
+**Currently unblocked (ready to work):** #9 Phase 2.3 — Order Confirmation extension (full ACCEPT_WITH_CHANGES path with proposed lines/dates).
+
+**Test totals on the working tree:** 99 (58 document-core + 15 auth + 12 network + 14 API: 2 M1 acceptance + 7 PO lifecycle + 5 PO_CHANGE).
 
 ---
 
@@ -163,26 +165,17 @@ Shared layout, nav, notification bell, org switcher. Defer per-portal app split 
 
 Each document = one `document_type` value with Zod body schema, state machine, allowed link types, issuer-side portal form, recipient-side portal view.
 
-### #7 — Phase 2.1: Purchase Order (PO) ⬜
+### #7 — Phase 2.1: Purchase Order (PO) ✅ completed
 
 **Spec:** [PHASES.md §2.1](./PHASES.md)
-**Blocked by:** #6
-**Blocks:** #8, #9, #10
 
-PO (buyer→supplier). Anchor of the indirect choreography.
-- States: `DRAFT → ISSUED → ACKNOWLEDGED → IN_FULFILLMENT → CLOSED`
-- Side states: `CANCELLED`, `CHANGED`
-- Body schema, state machine config, portal forms (buyer: issue/edit/cancel; supplier: read view)
+Delivered: full `DRAFT → ISSUED → ACKNOWLEDGED → IN_FULFILLMENT → CLOSED` lifecycle plus `CANCELLED`/`CHANGED` side states. Document-type module structure under `apps/api/src/document-types/po/` (body-schema · state-machine · link-rules · index) — pattern reused by every later doc type. Body covers full §2.1 contract (currency, payment terms, Incoterms, ship-to/bill-to addresses, requested delivery date, lines with description and unit-of-measure). Portal: buyer **My POs**, **Create PO** form, **PO detail** with role-aware transition buttons, supplier **Incoming POs**. New `GET /documents` endpoint with `box=inbox|outbox|both` plus filters drives the lists. 7 lifecycle tests + 1 listing test, all passing.
 
-Partially shipped in #6; this task extends with full state machine and PO_CHANGE handoff.
-
-### #8 — Phase 2.2: PO Change (PO_CHANGE) ⬜
+### #8 — Phase 2.2: PO Change (PO_CHANGE) ✅ completed
 
 **Spec:** [PHASES.md §2.2](./PHASES.md)
-**Blocked by:** #7
-**Blocks:** #15
 
-PO_CHANGE (buyer→supplier). `SUPERSEDES` → original PO. Supplier re-acknowledges via new ORDER_CONFIRMATION.
+Delivered: PO_CHANGE document type with `DRAFT → ISSUED → ACCEPTED_BY_SUPPLIER | REJECTED_BY_SUPPLIER` state machine. Body carries the **complete revised PO body** (not a delta diff) plus `changeReason` and optional `affectedLineRefs` — matches Ariba's model. `SUPERSEDES → PO` link rule. PO state machine's `→ CHANGED` transition gated by a precondition guard at the route layer that requires an `ACCEPTED_BY_SUPPLIER` PO_CHANGE linked to the PO. Portal: **Issue PO change** button on buyer's PO detail when status ∈ {ISSUED, ACKNOWLEDGED, IN_FULFILLMENT}, change-form page pre-filled from latest PO body, **PO_CHANGE detail page** for both sides with Accept/Reject buttons for the supplier. 5 lifecycle tests covering happy path, no-change rejection, not-yet-accepted rejection, supplier-reject preserving PO state, body validation.
 
 ### #9 — Phase 2.3: Order Confirmation / POAck ⬜
 

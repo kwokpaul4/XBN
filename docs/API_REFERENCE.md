@@ -11,9 +11,11 @@ Endpoint-by-endpoint reference for the XBN HTTP API. Companion to [`OPERATIONS.m
 **Content type:** all bodies are `application/json` unless noted.
 
 **Error envelope:**
+
 ```json
 { "error": "<code>", "reason": { ... }, "issues": [ ... ] }
 ```
+
 - `error` is always a string code.
 - `reason` (optional, object) carries structured detail when the rejection comes from a deeper layer (state machine, repository, guard).
 - `issues` (optional, array) is Zod's validation issue list.
@@ -27,6 +29,7 @@ Endpoint-by-endpoint reference for the XBN HTTP API. Companion to [`OPERATIONS.m
 Liveness probe. Doesn't touch the DB.
 
 **Response 200**
+
 ```json
 { "ok": true }
 ```
@@ -47,6 +50,7 @@ Create a new account. Returns the email-verification token (in production this w
 | `displayName` | string | optional |
 
 **201**
+
 ```json
 { "userId": "cuid_...", "verificationToken": "..." }
 ```
@@ -60,11 +64,13 @@ Create a new account. Returns the email-verification token (in production this w
 Consume a verification token (single-use, 24-hour TTL).
 
 **Body**
+
 ```json
 { "token": "..." }
 ```
 
 **200**
+
 ```json
 { "userId": "..." }
 ```
@@ -78,11 +84,13 @@ Consume a verification token (single-use, 24-hour TTL).
 Authenticate and receive the session cookie.
 
 **Body**
+
 ```json
 { "email": "alice@example.com", "password": "..." }
 ```
 
 **200** — also sets `xbn_session` cookie.
+
 ```json
 { "userId": "..." }
 ```
@@ -96,6 +104,7 @@ Authenticate and receive the session cookie.
 Invalidate the current session and clear the cookie.
 
 **200**
+
 ```json
 { "ok": true }
 ```
@@ -107,11 +116,13 @@ Invalidate the current session and clear the cookie.
 Always returns `200`. Token included only when the email is on file (avoids enumeration).
 
 **Body**
+
 ```json
 { "email": "alice@example.com" }
 ```
 
 **200**
+
 ```json
 { "ok": true, "token": "..." | null }
 ```
@@ -123,11 +134,13 @@ Always returns `200`. Token included only when the email is on file (avoids enum
 Consume the reset token, set the new password, **invalidate all of the user's sessions**.
 
 **Body**
+
 ```json
 { "token": "...", "newPassword": "..." }
 ```
 
 **200**
+
 ```json
 { "userId": "..." }
 ```
@@ -143,6 +156,7 @@ Consume the reset token, set the new password, **invalidate all of the user's se
 Current user, all memberships, active membership.
 
 **200**
+
 ```json
 {
   "user": { "id": "...", "email": "...", "displayName": "...", "emailVerifiedAt": "..." },
@@ -172,6 +186,7 @@ Create a new org and bind the caller as the chosen role inside it.
 | `bindAsRole` | `BUYER_USER` \| `BUYER_ADMIN` \| `SUPPLIER_USER` \| `SUPPLIER_ADMIN` \| `NETWORK_ADMIN` | ✅ |
 
 **201**
+
 ```json
 { "org": { "id": "...", "legalName": "...", "displayName": "...", "orgType": "BUYER" } }
 ```
@@ -185,8 +200,9 @@ Create a new org and bind the caller as the chosen role inside it.
 List all orgs visible on the network.
 
 **200**
+
 ```json
-{ "orgs": [ { "id": "...", "legalName": "...", "displayName": "...", "orgType": "BUYER" } ] }
+{ "orgs": [{ "id": "...", "legalName": "...", "displayName": "...", "orgType": "BUYER" }] }
 ```
 
 ---
@@ -208,6 +224,7 @@ Create a trading relationship between a buyer org and a supplier org. One per (b
 | `summaryInvoicingEnabled` | boolean | optional | `false` |
 
 **201**
+
 ```json
 {
   "relationship": {
@@ -236,6 +253,7 @@ List relationships where the active org is on either side (buyer or supplier).
 **Headers:** `x-active-org` required.
 
 **200**
+
 ```json
 { "relationships": [ { ... }, { ... } ] }
 ```
@@ -249,6 +267,7 @@ List relationships where the active org is on either side (buyer or supplier).
 Move a `PENDING_INVITATION` relationship to `ACTIVE`. No-op for any other source state.
 
 **200**
+
 ```json
 { "ok": true | false }
 ```
@@ -269,6 +288,7 @@ Issue a one-time invitation to bring a supplier onto the network. 14-day TTL.
 | `invitedOrgName` | string | ✅ |
 
 **201**
+
 ```json
 {
   "token": "...",
@@ -292,11 +312,13 @@ Issue a one-time invitation to bring a supplier onto the network. 14-day TTL.
 Mark an invitation `ACCEPTED` (single-use).
 
 **Body**
+
 ```json
 { "token": "..." }
 ```
 
 **200**
+
 ```json
 { "ok": true, "invitationId": "...", "invitedEmail": "...", "invitedByUserId": "..." }
 ```
@@ -308,6 +330,49 @@ Mark an invitation `ACCEPTED` (single-use).
 ## Documents
 
 All document routes require auth and `x-active-org`.
+
+### `GET /documents`
+
+List documents scoped to the active org. Supports inbox/outbox filtering, plus optional document-type, status, and counterparty filters.
+
+**Query params**
+| Param | Type | Default | Notes |
+|---|---|---|---|
+| `box` | `inbox` \| `outbox` \| `both` | `both` | `inbox` = active org is recipient; `outbox` = active org is issuer |
+| `documentType` | string | — | e.g. `PO`, `ORDER_CONFIRMATION` |
+| `status` | string | — | e.g. `DRAFT`, `ISSUED` |
+| `counterpartyOrgId` | cuid | — | Restrict to docs flowing to/from this counterparty |
+| `limit` | int 1–200 | 50 | |
+| `offset` | int ≥ 0 | 0 | Simple offset pagination |
+
+**200**
+
+```json
+{
+  "documents": [
+    {
+      "id": "cuid_...",
+      "documentType": "PO",
+      "documentNumber": "PO-000001",
+      "issuerOrgId": "...",
+      "recipientOrgId": "...",
+      "status": "ISSUED",
+      "createdAt": "...",
+      "updatedAt": "...",
+      "currency": "USD",
+      "totalAmount": null,
+      "issueDate": null
+    }
+  ],
+  "total": 12,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+`totalAmount` is serialised as a string when non-null (Postgres `decimal` precision preservation).
+
+---
 
 ### `POST /documents`
 
@@ -323,22 +388,72 @@ Publish a document. Goes through the trading-relationship guard, body-schema val
 
 **Currently registered types and body shapes:**
 
-| Type | Body |
-|---|---|
-| `GENERIC_DOCUMENT` | `{ note: string, metadata?: object }` |
-| `PO` | `{ currency: 3-char, lines: [{ sku, quantity > 0, unitPrice ≥ 0 }] }` |
-| `ORDER_CONFIRMATION` | `{ poDocumentNumber: string, mode: FULL_ACCEPT \| ACCEPT_WITH_CHANGES \| REJECT }` |
+| Type                 | Body                                                                                                  |
+| -------------------- | ----------------------------------------------------------------------------------------------------- |
+| `GENERIC_DOCUMENT`   | `{ note: string, metadata?: object }`                                                                 |
+| `PO`                 | See "PO body" below                                                                                   |
+| `ORDER_CONFIRMATION` | `{ poDocumentNumber: string, mode: FULL_ACCEPT \| ACCEPT_WITH_CHANGES \| REJECT, comments?: string }` |
+| `PO_CHANGE`          | See "PO_CHANGE body" below                                                                            |
+
+**PO body** (PHASES.md §2.1)
+
+```ts
+{
+  currency: string,                  // ISO-4217, exactly 3 chars
+  paymentTermsRef?: string,
+  incoterms?: string,                // FOB, CIF, EXW, ...
+  buyerReference?: string,
+  costCentre?: string,
+  requestedDeliveryDate: string,     // ISO YYYY-MM-DD
+  shipTo: Address,
+  billTo: Address,
+  lines: Array<{
+    sku: string,
+    description: string,
+    quantity: number,                // > 0
+    unitPrice: number,               // ≥ 0
+    unitOfMeasure: string,           // EA, KG, M, ...
+    lineRef?: string                 // optional buyer-internal ref
+  }>                                 // ≥ 1 element
+}
+
+type Address = {
+  name: string,
+  line1: string,
+  line2?: string,
+  city: string,
+  region?: string,
+  postalCode?: string,
+  countryCode: string                // ISO-3166 alpha-2 (US, GB, ...)
+}
+```
+
+**PO_CHANGE body** (PHASES.md §2.2)
+
+```ts
+{
+  poDocumentNumber: string,          // human-facing PO number being amended
+  poDocumentId: string,              // cuid of the PO being amended
+  changeReason: string,              // free-form, surfaced in audit + supplier UI
+  affectedLineRefs?: string[],       // optional convenience for diff highlighting
+  revisedBody: PoBody                // complete revised PO body, same shape as PO
+}
+```
+
+Carries the **complete revised PO body**, not a diff. The supplier UI computes the diff against the prior PO version. After the supplier accepts (transitions `ACCEPTED_BY_SUPPLIER`), the buyer can transition the original PO to `CHANGED`.
 
 **201**
+
 ```json
 {
   "documentId": "cuid_...",
-  "versionId":  "cuid_...",
+  "versionId": "cuid_...",
   "documentNumber": "PO-000001"
 }
 ```
 
 **400** errors: `validation`, `unknown_document_type`, `publish_rejected`. The `reason.kind` may be:
+
 - `guard` — relationship missing/inactive, doc type not enabled, SUMMARY mode without `summaryInvoicingEnabled`
 - `body_schema` — body fails Zod validation
 - `repository` — DB-level rejection (e.g. duplicate document number)
@@ -350,6 +465,7 @@ Publish a document. Goes through the trading-relationship guard, body-schema val
 Fetch a document with its versions, links, audit log, and attachments.
 
 **200**
+
 ```json
 {
   "id": "...",
@@ -385,6 +501,7 @@ Append a new immutable version. Audit log gets `SUPERSEDED`.
 | `changeReason` | string | optional |
 
 **200**
+
 ```json
 { "versionId": "...", "versionNumber": 2 }
 ```
@@ -405,11 +522,13 @@ Run the document type's state machine to move the document from one status to an
 | `toStatus` | string | ✅ |
 
 **200**
+
 ```json
 { "nextStatus": "ISSUED" }
 ```
 
 **400** errors: `validation`, `unknown_document_type`, `transition_rejected`. The `reason.kind` may be:
+
 - `state_machine` — sub-`reason.kind`: `unknown_source_state`, `no_such_transition`, `wrong_role`, `wrong_actor_side`, `guard_rejected`
 - `repository` — sub-`reason.kind`: `document_not_found`, `status_mismatch` (optimistic-concurrency loss)
 
@@ -427,16 +546,18 @@ Add a typed link to another document. The `(fromType, toType, linkType)` triple 
 | `linkType` | string | ✅ |
 
 **201**
+
 ```json
 { "linkId": "..." }
 ```
 
 **400** errors: `validation`, `link_rejected`. The `reason.kind` may be:
+
 - `unknown_link_rule` — triple not registered
 - `repository` with `kind: "duplicate_link"` — same triple already exists (the no-double-billing guard)
 - `repository` with `kind: "missing_link_target"` — `toDocumentId` doesn't exist
 
-**404** errors: `not_found` (on the *from* document).
+**404** errors: `not_found` (on the _from_ document).
 
 ---
 
@@ -452,6 +573,7 @@ Upload bytes via base64. SHA-256 computed and stored; audit log gets `ATTACHMENT
 | `bytesBase64` | string (base64) | ✅ |
 
 **201**
+
 ```json
 {
   "id": "cuid_...",
@@ -480,34 +602,59 @@ Stream the bytes back. SHA-256 verified before sending; mismatch surfaces as `40
 ## State machine reference
 
 ### `GENERIC_DOCUMENT`
+
 Initial: `PUBLISHED`. Mostly terminal; admins can `CANCELLED`.
 
-### `PO`
-| from | to | role | side |
-|---|---|---|---|
-| `DRAFT` | `ISSUED` | `BUYER_ADMIN`/`BUYER_USER` | issuer |
-| `DRAFT` | `CANCELLED` | `BUYER_ADMIN` | issuer |
-| `ISSUED` | `ACKNOWLEDGED` | `SUPPLIER_USER`/`SUPPLIER_ADMIN` | recipient |
-| `ISSUED` | `CANCELLED` | `BUYER_ADMIN` | issuer |
+### `PO` (PHASES.md §2.1)
 
-`ACKNOWLEDGED`, `CANCELLED` are terminal.
+| from             | to               | role                             | side      |
+| ---------------- | ---------------- | -------------------------------- | --------- |
+| `DRAFT`          | `ISSUED`         | `BUYER_ADMIN`/`BUYER_USER`       | issuer    |
+| `DRAFT`          | `CANCELLED`      | `BUYER_ADMIN`                    | issuer    |
+| `DRAFT`          | `CHANGED`        | `BUYER_ADMIN`                    | issuer    |
+| `ISSUED`         | `ACKNOWLEDGED`   | `SUPPLIER_USER`/`SUPPLIER_ADMIN` | recipient |
+| `ISSUED`         | `CANCELLED`      | `BUYER_ADMIN`                    | issuer    |
+| `ISSUED`         | `CHANGED`        | `BUYER_ADMIN`                    | issuer    |
+| `ACKNOWLEDGED`   | `IN_FULFILLMENT` | `BUYER_ADMIN`/`BUYER_USER`       | issuer    |
+| `ACKNOWLEDGED`   | `CANCELLED`      | `BUYER_ADMIN`                    | issuer    |
+| `ACKNOWLEDGED`   | `CHANGED`        | `BUYER_ADMIN`                    | issuer    |
+| `IN_FULFILLMENT` | `CLOSED`         | `BUYER_ADMIN`/`BUYER_USER`       | issuer    |
+| `IN_FULFILLMENT` | `CANCELLED`      | `BUYER_ADMIN`                    | issuer    |
+| `IN_FULFILLMENT` | `CHANGED`        | `BUYER_ADMIN`                    | issuer    |
+
+`CLOSED`, `CANCELLED`, `CHANGED` are terminal.
+
+**Precondition for `→ CHANGED`** — an `ACCEPTED_BY_SUPPLIER` PO_CHANGE must `SUPERSEDES`-link this PO. Without one, the route rejects with `reason.kind: "precondition_failed"` / `detail.kind: "no_accepted_po_change"`.
 
 ### `ORDER_CONFIRMATION`
-| from | to | role | side |
-|---|---|---|---|
+
+| from    | to       | role                             | side   |
+| ------- | -------- | -------------------------------- | ------ |
 | `DRAFT` | `ISSUED` | `SUPPLIER_USER`/`SUPPLIER_ADMIN` | issuer |
 
 `ISSUED` is terminal.
+
+### `PO_CHANGE` (PHASES.md §2.2)
+
+| from     | to                     | role                             | side      |
+| -------- | ---------------------- | -------------------------------- | --------- |
+| `DRAFT`  | `ISSUED`               | `BUYER_ADMIN`/`BUYER_USER`       | issuer    |
+| `ISSUED` | `ACCEPTED_BY_SUPPLIER` | `SUPPLIER_USER`/`SUPPLIER_ADMIN` | recipient |
+| `ISSUED` | `REJECTED_BY_SUPPLIER` | `SUPPLIER_USER`/`SUPPLIER_ADMIN` | recipient |
+
+`ACCEPTED_BY_SUPPLIER`, `REJECTED_BY_SUPPLIER` are terminal.
 
 ---
 
 ## Link registry reference
 
-| from → to | linkType | inboundCardinality | outboundCardinality |
-|---|---|---|---|
-| `GENERIC_DOCUMENT` → `GENERIC_DOCUMENT` | `RESPONDS_TO` | many | one |
-| `ORDER_CONFIRMATION` → `PO` | `ACKNOWLEDGES` | one | one |
+| from → to                               | linkType       | inboundCardinality | outboundCardinality | Notes                              |
+| --------------------------------------- | -------------- | ------------------ | ------------------- | ---------------------------------- |
+| `GENERIC_DOCUMENT` → `GENERIC_DOCUMENT` | `RESPONDS_TO`  | many               | one                 |                                    |
+| `ORDER_CONFIRMATION` → `PO`             | `ACKNOWLEDGES` | one                | one                 |                                    |
+| `PO_CHANGE` → `PO`                      | `SUPERSEDES`   | one                | one                 | Precondition for PO `→ CHANGED`    |
+| `PO` → `PO`                             | `SUPERSEDES`   | one                | one                 | Reserved for cross-PO supersession |
 
 ---
 
-**Last updated:** 2026-06-18 · matches commit `ab8dbb8` on `main`.
+**Last updated:** 2026-06-19 · Phase 2.1 (PO) and Phase 2.2 (PO_CHANGE) complete.

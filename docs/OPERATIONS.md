@@ -106,12 +106,12 @@ docker compose down          # also removes containers (volumes survive)
 
 ### Useful endpoints when running
 
-| URL | Purpose |
-|---|---|
-| `http://localhost:5173` | Web portal |
-| `http://localhost:3000/health` | API health probe (`{ "ok": true }`) |
-| `http://localhost:9001` | MinIO web console (login: `xbn` / `xbn_dev_minio`) |
-| `http://localhost:8025` | MailHog web inbox (will be used in Phase 4.5) |
+| URL                            | Purpose                                            |
+| ------------------------------ | -------------------------------------------------- |
+| `http://localhost:5173`        | Web portal                                         |
+| `http://localhost:3000/health` | API health probe (`{ "ok": true }`)                |
+| `http://localhost:9001`        | MinIO web console (login: `xbn` / `xbn_dev_minio`) |
+| `http://localhost:8025`        | MailHog web inbox (will be used in Phase 4.5)      |
 
 ---
 
@@ -123,7 +123,7 @@ docker compose down          # also removes containers (volumes survive)
 2. Click **Register**.
 3. Enter email + password (≥ 8 characters).
 4. Submit. You'll see a **verification token** displayed on the page.
-   > *Why on the page?* In production an email would be sent. The notifier is Phase 4.5; for now the token is returned in the response so you can verify locally.
+   > _Why on the page?_ In production an email would be sent. The notifier is Phase 4.5; for now the token is returned in the response so you can verify locally.
 5. Copy the token into the verification field, click **Verify and sign in**. You're now logged in.
 
 ### API
@@ -151,12 +151,14 @@ curl -X POST http://localhost:3000/auth/verify-email \
 ```
 
 **Constraints**
+
 - Email must be syntactically valid; stored lower-cased and trimmed.
 - Password ≥ 8 chars (Argon2id hashed; OWASP 2024 baseline params).
 - A user cannot log in until `verifyEmail` has been called with the token.
 - `displayName` is optional.
 
 **Errors**
+
 - `400 { "error": "email_taken" }`
 - `400 { "error": "password_too_short" }`
 - `400 { "error": "invalid" | "expired" | "consumed" }` on `/auth/verify-email`
@@ -189,6 +191,7 @@ curl -X POST http://localhost:3000/auth/logout -b cookies.txt
 ```
 
 **Errors**
+
 - `401 { "error": "invalid_credentials" }` — wrong email or wrong password (uniform — does **not** disclose whether the email exists).
 - `401 { "error": "email_not_verified" }` — registered but never verified.
 
@@ -229,6 +232,7 @@ curl -X POST http://localhost:3000/auth/complete-password-reset \
 ## 6. Creating an organisation
 
 Anyone authenticated can create an org and binds themself as a chosen role inside it. Typically:
+
 - Buyer-side users create their org with `bindAsRole: "BUYER_ADMIN"`
 - Supplier-side users create their org with `bindAsRole: "SUPPLIER_ADMIN"`
 
@@ -256,12 +260,12 @@ curl -X POST http://localhost:3000/network/orgs \
 
 **Body fields**
 
-| Field | Required | Type | Notes |
-|---|---|---|---|
-| `legalName` | ✅ | string ≥ 1 char | The official entity name |
-| `displayName` | ✅ | string ≥ 1 char | Shown in the UI |
-| `orgType` | ✅ | `BUYER` \| `SUPPLIER` \| `BOTH` | `BOTH` allows the org to act on either side |
-| `bindAsRole` | ✅ | OrgRole | Role you receive in the new org. Pick one matching `orgType` |
+| Field         | Required | Type                            | Notes                                                        |
+| ------------- | -------- | ------------------------------- | ------------------------------------------------------------ |
+| `legalName`   | ✅       | string ≥ 1 char                 | The official entity name                                     |
+| `displayName` | ✅       | string ≥ 1 char                 | Shown in the UI                                              |
+| `orgType`     | ✅       | `BUYER` \| `SUPPLIER` \| `BOTH` | `BOTH` allows the org to act on either side                  |
+| `bindAsRole`  | ✅       | OrgRole                         | Role you receive in the new org. Pick one matching `orgType` |
 
 ### List orgs
 
@@ -332,18 +336,19 @@ curl -X POST http://localhost:3000/network/relationships \
 
 **Body fields**
 
-| Field | Required | Type | Notes |
-|---|---|---|---|
-| `buyerOrgId` | ✅ | cuid | Org with `orgType` BUYER or BOTH |
-| `supplierOrgId` | ✅ | cuid | Org with `orgType` SUPPLIER or BOTH |
-| `status` | optional | `PENDING_INVITATION` \| `ACTIVE` | Default `ACTIVE` |
-| `enabledDocumentTypes` | optional | `string[]` | Doc types allowed to flow. **Empty = nothing can be published** |
-| `defaultCurrency` | optional | ISO-4217 (3 chars) | e.g. `"USD"` |
-| `summaryInvoicingEnabled` | optional | boolean | Phase 2.6 SUMMARY-invoice gate. Default `false` |
+| Field                     | Required | Type                             | Notes                                                           |
+| ------------------------- | -------- | -------------------------------- | --------------------------------------------------------------- |
+| `buyerOrgId`              | ✅       | cuid                             | Org with `orgType` BUYER or BOTH                                |
+| `supplierOrgId`           | ✅       | cuid                             | Org with `orgType` SUPPLIER or BOTH                             |
+| `status`                  | optional | `PENDING_INVITATION` \| `ACTIVE` | Default `ACTIVE`                                                |
+| `enabledDocumentTypes`    | optional | `string[]`                       | Doc types allowed to flow. **Empty = nothing can be published** |
+| `defaultCurrency`         | optional | ISO-4217 (3 chars)               | e.g. `"USD"`                                                    |
+| `summaryInvoicingEnabled` | optional | boolean                          | Phase 2.6 SUMMARY-invoice gate. Default `false`                 |
 
 `enabledDocumentTypes` is the toggle for what can flow. Currently registered document types are `GENERIC_DOCUMENT`, `PO`, `ORDER_CONFIRMATION` — you must list each before they can be published.
 
 **Errors**
+
 - `409 { "error": "already_exists" }` — there's already a relationship with this (buyer, supplier) pair (one per pair, by DB unique).
 - `400 { "error": "validation", "issues": [...] }` — bad body shape.
 
@@ -403,6 +408,7 @@ curl -X POST http://localhost:3000/network/invitations/accept \
 ```
 
 **Errors**
+
 - `400 { "error": "invalid" }` — unknown token.
 - `400 { "error": "expired" }` — past TTL.
 - `400 { "error": "already_resolved" }` — already accepted, declined, or expired.
@@ -416,6 +422,7 @@ Use Path A from §8.
 ## 10. Publishing a document
 
 A document publish goes through:
+
 1. **Trading-relationship guard** — the relationship must exist and be ACTIVE, and the doc type must be in `enabledDocumentTypes`.
 2. **Body validation** — Zod schema for the doc type (rejects malformed body).
 3. **Number reservation** — atomic per (issuer, type, prefix).
@@ -423,11 +430,12 @@ A document publish goes through:
 
 ### Currently registered document types
 
-| Type | Body schema | Initial state |
-|---|---|---|
-| `GENERIC_DOCUMENT` | `{ note: string, metadata?: object }` | `PUBLISHED` |
-| `PO` | `{ currency: 3-char, lines: [{sku, quantity>0, unitPrice≥0}] }` | `DRAFT` |
-| `ORDER_CONFIRMATION` | `{ poDocumentNumber: string, mode: FULL_ACCEPT \| ACCEPT_WITH_CHANGES \| REJECT }` | `DRAFT` |
+| Type                 | Body schema                                                                                                                                                                                                   | Initial state |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| `GENERIC_DOCUMENT`   | `{ note: string, metadata?: object }`                                                                                                                                                                         | `PUBLISHED`   |
+| `PO`                 | See §2.1 / [API_REFERENCE.md](./API_REFERENCE.md#post-documents) — header (currency, payment terms, ship-to/bill-to addresses, requested delivery date) + lines (sku, description, quantity, unit price, UoM) | `DRAFT`       |
+| `ORDER_CONFIRMATION` | `{ poDocumentNumber: string, mode: FULL_ACCEPT \| ACCEPT_WITH_CHANGES \| REJECT }`                                                                                                                            | `DRAFT`       |
+| `PO_CHANGE`          | `{ poDocumentNumber, poDocumentId, changeReason, revisedBody: <full PO body> }` — buyer-issued amendment                                                                                                      | `DRAFT`       |
 
 ### API
 
@@ -442,9 +450,28 @@ curl -X POST http://localhost:3000/documents \
     "recipientOrgId": "'"$SUPPLIER_ORG_ID"'",
     "body": {
       "currency": "USD",
+      "paymentTermsRef": "NET-30",
+      "requestedDeliveryDate": "2026-07-15",
+      "shipTo": {
+        "name": "Buyer Receiving",
+        "line1": "1 Buyer Way",
+        "city": "Buyerville",
+        "countryCode": "US"
+      },
+      "billTo": {
+        "name": "Buyer AP",
+        "line1": "1 Buyer Way",
+        "city": "Buyerville",
+        "countryCode": "US"
+      },
       "lines": [
-        { "sku": "WIDGET-1", "quantity": 5, "unitPrice": 10.00 },
-        { "sku": "WIDGET-2", "quantity": 2, "unitPrice": 25.00 }
+        {
+          "sku": "WIDGET-1",
+          "description": "Widget Mk I",
+          "quantity": 5,
+          "unitPrice": 10.00,
+          "unitOfMeasure": "EA"
+        }
       ]
     }
   }'
@@ -470,15 +497,15 @@ curl -X POST http://localhost:3000/documents \
 
 **Common rejection reasons**
 
-| Status | `error` | `reason.kind` | Cause |
-|---|---|---|---|
-| 400 | `publish_rejected` | `guard` | No relationship, relationship not ACTIVE, or doc type not enabled |
-| 400 | `publish_rejected` | `body_schema` | Body fails the Zod schema |
-| 400 | `unknown_document_type` | — | Type not registered |
+| Status | `error`                 | `reason.kind` | Cause                                                             |
+| ------ | ----------------------- | ------------- | ----------------------------------------------------------------- |
+| 400    | `publish_rejected`      | `guard`       | No relationship, relationship not ACTIVE, or doc type not enabled |
+| 400    | `publish_rejected`      | `body_schema` | Body fails the Zod schema                                         |
+| 400    | `unknown_document_type` | —             | Type not registered                                               |
 
 ### Portal
 
-The portal does **not** yet have publish forms. Use the API for now. Portal forms ship per-document-type in Phase 2.
+Phase 2.1 ships buyer-side **My POs** (`/buyer/po`), **Create PO** (`/buyer/po/new`), and PO detail (`/buyer/po/:id`) with role-aware action buttons (Issue / Acknowledge / Mark in fulfilment / Close / Cancel). Supplier sees **Incoming POs** at `/supplier/po`. Phase 2.2 adds **Issue PO change** (`/buyer/po/:id/change`) and a PO_CHANGE detail page where the supplier accepts or rejects.
 
 ---
 
@@ -520,7 +547,7 @@ Response includes:
 }
 ```
 
-> **Note.** There is no list-all-documents endpoint yet (`GET /documents`). It lands in Phase 4.1 (inbox/outbox). For now you fetch by ID after publishing or following a link.
+> **Listing.** Phase 2 adds `GET /documents` with `box=inbox|outbox|both` plus optional `documentType=`, `status=`, `counterpartyOrgId=`, `limit=`, `offset=` filters. The portal's "My POs" page is built on it. Cross-type search and richer filters land in Phase 4.1.
 
 ---
 
@@ -550,19 +577,39 @@ The new body is validated against the document type's Zod schema again, exactly 
 ## 13. Transitioning document status
 
 Each document type has its own state machine. Transitions check:
+
 - The `(fromStatus → toStatus)` edge is declared
 - The actor's role matches `requiredRole`
 - The actor's side (`issuer` or `recipient`) matches `actor`
 - An optional guard predicate
 
-### PO state machine (current)
+### PO state machine (PHASES.md §2.1)
 
 ```
-DRAFT ─── (BUYER_ADMIN, issuer) ───────► ISSUED
-DRAFT ─── (BUYER_ADMIN, issuer) ───────► CANCELLED
-ISSUED ── (SUPPLIER_USER, recipient) ──► ACKNOWLEDGED
-ISSUED ── (BUYER_ADMIN, issuer) ───────► CANCELLED
-ACKNOWLEDGED, CANCELLED → terminal
+DRAFT ─── (BUYER_*, issuer) ──────────► ISSUED
+DRAFT ─── (BUYER_ADMIN, issuer) ──────► CANCELLED
+DRAFT ─── (BUYER_ADMIN, issuer) ──────► CHANGED              [via accepted PO_CHANGE]
+ISSUED ── (SUPPLIER_*, recipient) ────► ACKNOWLEDGED
+ISSUED ── (BUYER_ADMIN, issuer) ──────► CANCELLED
+ISSUED ── (BUYER_ADMIN, issuer) ──────► CHANGED              [via accepted PO_CHANGE]
+ACKNOWLEDGED ─ (BUYER_*, issuer) ─────► IN_FULFILLMENT
+ACKNOWLEDGED ─ (BUYER_ADMIN, issuer) ─► CANCELLED
+ACKNOWLEDGED ─ (BUYER_ADMIN, issuer) ─► CHANGED              [via accepted PO_CHANGE]
+IN_FULFILLMENT (BUYER_*, issuer) ─────► CLOSED
+IN_FULFILLMENT (BUYER_ADMIN, issuer) ─► CANCELLED
+IN_FULFILLMENT (BUYER_ADMIN, issuer) ─► CHANGED              [via accepted PO_CHANGE]
+CLOSED, CANCELLED, CHANGED → terminal
+```
+
+**`CHANGED` precondition.** The transition target `CHANGED` requires an **accepted PO_CHANGE** linked via `SUPERSEDES → this PO`. Without one, the transition is rejected with `reason.kind: "precondition_failed"` / `detail.kind: "no_accepted_po_change"`. See §10 PO_CHANGE flow and PHASES.md §2.2.
+
+### PO_CHANGE state machine (PHASES.md §2.2)
+
+```
+DRAFT ── (BUYER_*, issuer) ──────────► ISSUED
+ISSUED ─ (SUPPLIER_*, recipient) ────► ACCEPTED_BY_SUPPLIER
+ISSUED ─ (SUPPLIER_*, recipient) ────► REJECTED_BY_SUPPLIER
+ACCEPTED_BY_SUPPLIER, REJECTED_BY_SUPPLIER → terminal
 ```
 
 ### API
@@ -587,12 +634,13 @@ curl -X POST http://localhost:3000/documents/$PO_ID/transition \
 
 **Rejection reasons** (status 400, `error: "transition_rejected"`)
 
-| `reason.kind` | Cause |
-|---|---|
-| `state_machine` with `kind: "no_such_transition"` | The edge isn't declared |
-| `state_machine` with `kind: "wrong_role"` | Caller's role isn't authorised for the edge |
-| `state_machine` with `kind: "wrong_actor_side"` | Caller is on the wrong side of the relationship |
-| `repository` with `kind: "status_mismatch"` | Optimistic-concurrency: the row's current status isn't `fromStatus` (someone else transitioned it) |
+| `reason.kind`                                                     | Cause                                                                                              |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `state_machine` with `kind: "no_such_transition"`                 | The edge isn't declared                                                                            |
+| `state_machine` with `kind: "wrong_role"`                         | Caller's role isn't authorised for the edge                                                        |
+| `state_machine` with `kind: "wrong_actor_side"`                   | Caller is on the wrong side of the relationship                                                    |
+| `repository` with `kind: "status_mismatch"`                       | Optimistic-concurrency: the row's current status isn't `fromStatus` (someone else transitioned it) |
+| `precondition_failed` with `detail.kind: "no_accepted_po_change"` | Trying to move a PO to `CHANGED` without an accepted PO_CHANGE pointing at it                      |
 
 ---
 
@@ -602,10 +650,12 @@ Documents form a DAG via typed links. The link registry says which `(fromType, t
 
 ### Currently registered link rules
 
-| From → To | linkType | Cardinality |
-|---|---|---|
-| `GENERIC_DOCUMENT` → `GENERIC_DOCUMENT` | `RESPONDS_TO` | many in / one out |
-| `ORDER_CONFIRMATION` → `PO` | `ACKNOWLEDGES` | one in / one out |
+| From → To                               | linkType       | Cardinality       | Notes                                    |
+| --------------------------------------- | -------------- | ----------------- | ---------------------------------------- |
+| `GENERIC_DOCUMENT` → `GENERIC_DOCUMENT` | `RESPONDS_TO`  | many in / one out |                                          |
+| `ORDER_CONFIRMATION` → `PO`             | `ACKNOWLEDGES` | one in / one out  |                                          |
+| `PO_CHANGE` → `PO`                      | `SUPERSEDES`   | one in / one out  | Required precondition for PO `→ CHANGED` |
+| `PO` → `PO`                             | `SUPERSEDES`   | one in / one out  | Reserved for cross-PO supersession       |
 
 ### API
 
@@ -625,10 +675,10 @@ curl -X POST http://localhost:3000/documents/$ACK_ID/links \
 
 **Rejection reasons**
 
-| Status | `error` | `reason.kind` |
-|---|---|---|
-| 400 | `link_rejected` | `unknown_link_rule` — `(from, to, linkType)` not registered |
-| 400 | `link_rejected` | `repository` with `kind: "duplicate_link"` — the same `(from, to, linkType)` triple already exists. **This is the no-double-billing guard from PHASES.md §2.6** — important when SUMMARY invoicing arrives in Phase 2.6 |
+| Status | `error`         | `reason.kind`                                                                                                                                                                                                           |
+| ------ | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | `link_rejected` | `unknown_link_rule` — `(from, to, linkType)` not registered                                                                                                                                                             |
+| 400    | `link_rejected` | `repository` with `kind: "duplicate_link"` — the same `(from, to, linkType)` triple already exists. **This is the no-double-billing guard from PHASES.md §2.6** — important when SUMMARY invoicing arrives in Phase 2.6 |
 
 ---
 
@@ -764,13 +814,13 @@ You should see two version rows, one attachment, and audit-log entries for `CREA
 
 ### Org roles
 
-| Role | Typical use |
-|---|---|
-| `BUYER_USER` | Buyer-side user: views relationships, may eventually create docs (Phase 2 specifics). |
-| `BUYER_ADMIN` | Buyer-side admin: configures relationships, issues invitations, transitions `DRAFT → ISSUED` on POs, cancels POs. |
-| `SUPPLIER_USER` | Supplier-side user: acknowledges incoming POs (`ISSUED → ACKNOWLEDGED`), publishes `ORDER_CONFIRMATION`. |
-| `SUPPLIER_ADMIN` | Supplier-side admin: same as `SUPPLIER_USER` plus relationship-level config when wired. |
-| `NETWORK_ADMIN` | Network operator: cross-org visibility, audit, eventual moderation. |
+| Role             | Typical use                                                                                                       |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `BUYER_USER`     | Buyer-side user: views relationships, may eventually create docs (Phase 2 specifics).                             |
+| `BUYER_ADMIN`    | Buyer-side admin: configures relationships, issues invitations, transitions `DRAFT → ISSUED` on POs, cancels POs. |
+| `SUPPLIER_USER`  | Supplier-side user: acknowledges incoming POs (`ISSUED → ACKNOWLEDGED`), publishes `ORDER_CONFIRMATION`.          |
+| `SUPPLIER_ADMIN` | Supplier-side admin: same as `SUPPLIER_USER` plus relationship-level config when wired.                           |
+| `NETWORK_ADMIN`  | Network operator: cross-org visibility, audit, eventual moderation.                                               |
 
 A user holds memberships per org; the **active** membership for a request is decided by the `x-active-org` header (or first membership if absent).
 
@@ -786,10 +836,8 @@ A user holds memberships per org; the **active** membership for a request is dec
 
 Honest limits of the current build, so you don't go looking for these:
 
-- **List-all-documents / inbox / outbox** — no `GET /documents` endpoint. Lands in Phase 4.1.
-- **Cross-type search** — Postgres FTS is wired to land in Phase 4.1.
-- **Document-creation forms in the portal** — only register/login/admin/buyer/supplier shells exist. Per-type forms come with each Phase 2 task.
-- **Typed business documents beyond GENERIC_DOCUMENT, PO, ORDER_CONFIRMATION** — ASN, GR, Invoice, Credit Memo, Remittance, Forecast, SA Releases, Subcontracting, Consignment, Quality — all Phase 2/3.
+- **Cross-type search** — Postgres FTS is wired to land in Phase 4.1 (basic listing exists via `GET /documents` but full-text and dashboards don't).
+- **Typed business documents beyond GENERIC_DOCUMENT, PO, ORDER_CONFIRMATION, PO_CHANGE** — ASN, GR, Invoice, Credit Memo, Remittance, Forecast, SA Releases, Subcontracting, Consignment, Quality — all coming in Phase 2/3.
 - **Email delivery** — verification + reset tokens come back in API responses (and are shown on the register page) instead of being emailed. Phase 4.5 wires MailHog and SMTP.
 - **Approval workflows / payment posting / MRP** — explicitly **out of scope**. XBN is a transaction hub; these belong in the buyer's ERP. (See [`PHASES.md`](../PHASES.md) and [`CLAUDE.md`](../CLAUDE.md) cross-cutting concern #6.)
 - **SSO / SAML** — deferred. Plain email + password only at MVP.
@@ -797,6 +845,6 @@ Honest limits of the current build, so you don't go looking for these:
 
 ---
 
-**Last updated:** 2026-06-18 · matches commit `ab8dbb8` on `main`.
+**Last updated:** 2026-06-19 · Phase 2.1 (PO) and Phase 2.2 (PO_CHANGE) complete.
 
 For architecture see [`../PHASES.md`](../PHASES.md). For task progress see [`../TASKS.md`](../TASKS.md).

@@ -285,7 +285,28 @@ describe('M1 acceptance — Phase 1 verification choreography', () => {
         recipientOrgId: supplierOrgId,
         body: {
           currency: 'USD',
-          lines: [{ sku: 'WIDGET-1', quantity: 5, unitPrice: 10 }],
+          requestedDeliveryDate: '2026-07-01',
+          shipTo: {
+            name: 'Buyer Receiving',
+            line1: '1 Buyer Way',
+            city: 'Buyerville',
+            countryCode: 'US',
+          },
+          billTo: {
+            name: 'Buyer AP',
+            line1: '1 Buyer Way',
+            city: 'Buyerville',
+            countryCode: 'US',
+          },
+          lines: [
+            {
+              sku: 'WIDGET-1',
+              description: 'Widget Mk I',
+              quantity: 5,
+              unitPrice: 10,
+              unitOfMeasure: 'EA',
+            },
+          ],
         },
       })
       .expect(201);

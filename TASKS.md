@@ -4,7 +4,7 @@ Living task list for the XBN buyer-supplier document-exchange network. Mirrors t
 
 **Legend:** ⬜ pending · 🟡 in progress · ✅ completed · 🔒 blocked (waiting on prerequisites) · 🕓 deferred
 
-**Last updated:** 2026-06-17
+**Last updated:** 2026-06-18
 
 ---
 
@@ -12,18 +12,18 @@ Living task list for the XBN buyer-supplier document-exchange network. Mirrors t
 
 | Phase | Tasks | Done | In progress | Blocked | Deferred |
 |---|---|---|---|---|---|
-| Phase 1 — Foundation | 6 | 4 | 0 | 2 | 0 |
+| Phase 1 — Foundation | 6 | **6** | 0 | 0 | 0 |
 | Phase 2 — Indirect procurement | 9 | 0 | 0 | 9 | 0 |
 | Phase 3 — Direct-materials SCC | 7 | 0 | 0 | 4 | 3 |
 | Phase 4 — Network features | 5 | 0 | 0 | 5 | 0 |
 | Phase 5 — Production readiness | 4 | 0 | 0 | 4 | 0 |
-| **Total** | **31** | **4** | **0** | **24** | **3** |
+| **Total** | **31** | **6** | **0** | **22** | **3** |
 
-**Currently unblocked (ready to work):** #4 Phase 1.4 — Web portal shell
+**🎯 Milestone M1 reached** — Phase 1 substrate works end-to-end. The canonical PHASES.md Phase 1 verification choreography (org onboarding → trading relationship → GENERIC_DOCUMENT round-trip with attachment + supersede + cross-org rejection → PO ↔ ORDER_CONFIRMATION typed pair with state transitions audited) passes via supertest against real Postgres + MinIO.
 
-**Test totals on `main`:** 85 (58 document-core + 15 auth + 12 network)
+**Currently unblocked (ready to work):** #7 Phase 2.1 — Purchase Order (PO) starts Phase 2.
 
-**Substrate complete:** the data model, document operations, identity, multi-org membership, and trading-partner services all work end-to-end with integration tests against real Postgres + MinIO. M1 acceptance (vertical slice via portal) is the remaining Phase 1 work.
+**Test totals on `main`:** 89 (58 document-core + 15 auth + 12 network + 2 M1 acceptance + 2 portal smoke).
 
 ---
 
@@ -122,7 +122,7 @@ The spine of the network.
 
 **Authorization rule pervading the system:** every document operation must verify an active `TradingRelationship` with the document type enabled. Centralised in `document-core`, never re-implemented.
 
-### #4 — Phase 1.4: Web portal shell ⬜
+### #4 — Phase 1.4: Web portal shell ✅ completed
 
 **Spec:** [PHASES.md §1.4](./PHASES.md)
 **Blocked by:** #3
@@ -135,7 +135,7 @@ One React + Vite app with role-based routes:
 
 Shared layout, nav, notification bell, org switcher. Defer per-portal app split until divergence warrants it.
 
-### #6 — Phase 1.6: Vertical slice (M1 milestone task) ⬜
+### #6 — Phase 1.6: Vertical slice (M1 milestone task) ✅ completed
 
 **Spec:** [PHASES.md §1.6](./PHASES.md)
 **Blocked by:** #4

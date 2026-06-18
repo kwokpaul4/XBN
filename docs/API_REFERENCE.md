@@ -388,12 +388,12 @@ Publish a document. Goes through the trading-relationship guard, body-schema val
 
 **Currently registered types and body shapes:**
 
-| Type                 | Body                                                                                                  |
-| -------------------- | ----------------------------------------------------------------------------------------------------- |
-| `GENERIC_DOCUMENT`   | `{ note: string, metadata?: object }`                                                                 |
-| `PO`                 | See "PO body" below                                                                                   |
-| `ORDER_CONFIRMATION` | `{ poDocumentNumber: string, mode: FULL_ACCEPT \| ACCEPT_WITH_CHANGES \| REJECT, comments?: string }` |
-| `PO_CHANGE`          | See "PO_CHANGE body" below                                                                            |
+| Type                 | Body                                                                |
+| -------------------- | ------------------------------------------------------------------- |
+| `GENERIC_DOCUMENT`   | `{ note: string, metadata?: object }`                               |
+| `PO`                 | See "PO body" below                                                 |
+| `ORDER_CONFIRMATION` | Discriminated union on `mode` — see "ORDER_CONFIRMATION body" below |
+| `PO_CHANGE`          | See "PO_CHANGE body" below                                          |
 
 **PO body** (PHASES.md §2.1)
 
@@ -441,6 +441,61 @@ type Address = {
 ```
 
 Carries the **complete revised PO body**, not a diff. The supplier UI computes the diff against the prior PO version. After the supplier accepts (transitions `ACCEPTED_BY_SUPPLIER`), the buyer can transition the original PO to `CHANGED`.
+
+**ORDER_CONFIRMATION body** (PHASES.md §2.3) — Zod discriminated union on `mode`:
+
+```ts
+// FULL_ACCEPT — accept the PO as issued.
+{
+  mode: 'FULL_ACCEPT',
+  poDocumentNumber: string,
+  poDocumentId: string,              // cuid of PO being acknowledged
+  comments?: string,
+}
+
+// ACCEPT_WITH_CHANGES — accept in principle, propose amendments.
+// proposedChanges must include at least one of revisedRequestedDeliveryDate
+// or a non-empty revisedLines array.
+{
+  mode: 'ACCEPT_WITH_CHANGES',
+  poDocumentNumber: string,
+  poDocumentId: string,
+  comments?: string,
+  proposedChanges: {
+    revisedRequestedDeliveryDate?: string,        // ISO YYYY-MM-DD
+    revisedLines?: Array<{
+      lineRef: string,                            // matches PO line's lineRef or sku
+      revisedQuantity?: number,                   // > 0
+      revisedUnitPrice?: number,                  // ≥ 0
+      revisedDeliveryDate?: string,               // ISO YYYY-MM-DD
+      comments?: string,
+    }>,
+  },
+}
+
+// REJECT — supplier declines the PO.
+{
+  mode: 'REJECT',
+  poDocumentNumber: string,
+  poDocumentId: string,
+  comments?: string,
+}
+```
+
+**Auto-link on ORDER_CONFIRMATION publish.** Because every OC body carries `poDocumentId`, the `POST /documents` route automatically creates the `ACKNOWLEDGES → PO` link in the same response. If that auto-link step encounters an issue (PO not found, duplicate, etc.), the OC is still published and the response includes a `linkWarning` field with the rejection detail; the caller can retry the link separately.
+
+**201** for ORDER_CONFIRMATION may include `linkWarning`:
+
+```json
+{
+  "documentId": "cuid_...",
+  "versionId": "cuid_...",
+  "documentNumber": "ORDER_CONFIRMATION-000001",
+  "linkWarning": { "kind": "...", "detail": { ... } }   // present only if auto-link failed
+}
+```
+
+**Proposed changes are advisory.** The OC body never mutates the PO. If the buyer wants to materialise the supplier's `ACCEPT_WITH_CHANGES` amendments, the buyer must issue a `PO_CHANGE` document (PHASES.md §2.2 / Task #8). This keeps the PO's body single-sourced through PO versions only.
 
 **201**
 
@@ -626,13 +681,15 @@ Initial: `PUBLISHED`. Mostly terminal; admins can `CANCELLED`.
 
 **Precondition for `→ CHANGED`** — an `ACCEPTED_BY_SUPPLIER` PO_CHANGE must `SUPERSEDES`-link this PO. Without one, the route rejects with `reason.kind: "precondition_failed"` / `detail.kind: "no_accepted_po_change"`.
 
-### `ORDER_CONFIRMATION`
+### `ORDER_CONFIRMATION` (PHASES.md §2.3)
 
-| from    | to       | role                             | side   |
-| ------- | -------- | -------------------------------- | ------ |
-| `DRAFT` | `ISSUED` | `SUPPLIER_USER`/`SUPPLIER_ADMIN` | issuer |
+| from     | to                  | role                             | side      |
+| -------- | ------------------- | -------------------------------- | --------- |
+| `DRAFT`  | `ISSUED`            | `SUPPLIER_USER`/`SUPPLIER_ADMIN` | issuer    |
+| `ISSUED` | `ACCEPTED_BY_BUYER` | `BUYER_USER`/`BUYER_ADMIN`       | recipient |
+| `ISSUED` | `REJECTED_BY_BUYER` | `BUYER_USER`/`BUYER_ADMIN`       | recipient |
 
-`ISSUED` is terminal.
+`ACCEPTED_BY_BUYER`, `REJECTED_BY_BUYER` are terminal. Buyer transitions are most meaningful for `ACCEPT_WITH_CHANGES` mode (signals intent to issue a PO_CHANGE).
 
 ### `PO_CHANGE` (PHASES.md §2.2)
 
@@ -657,4 +714,4 @@ Initial: `PUBLISHED`. Mostly terminal; admins can `CANCELLED`.
 
 ---
 
-**Last updated:** 2026-06-19 · Phase 2.1 (PO) and Phase 2.2 (PO_CHANGE) complete.
+**Last updated:** 2026-06-19 · Phase 2.1 (PO), 2.2 (PO_CHANGE), and 2.3 (ORDER_CONFIRMATION) complete.

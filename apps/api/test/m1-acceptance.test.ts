@@ -322,7 +322,9 @@ describe('M1 acceptance — Phase 1 verification choreography', () => {
       .send({ fromStatus: 'DRAFT', toStatus: 'ISSUED' })
       .expect(200);
 
-    // 3. Supplier publishes an ORDER_CONFIRMATION linked to the PO.
+    // 3. Supplier publishes an ORDER_CONFIRMATION. The auto-link feature
+    //    in the publish handler creates the ACKNOWLEDGES → PO link in
+    //    the same call (Phase 2.3).
     const ackRes = await request(app)
       .post('/documents')
       .set('Cookie', supplier.cookie)
@@ -330,21 +332,14 @@ describe('M1 acceptance — Phase 1 verification choreography', () => {
       .send({
         documentType: 'ORDER_CONFIRMATION',
         recipientOrgId: buyerOrgId,
-        body: { poDocumentNumber: poNumber, mode: 'FULL_ACCEPT' },
+        body: {
+          mode: 'FULL_ACCEPT',
+          poDocumentNumber: poNumber,
+          poDocumentId: poId,
+        },
       })
       .expect(201);
     const ackId = ackRes.body.documentId as string;
-
-    await request(app)
-      .post(`/documents/${ackId}/links`)
-      .set('Cookie', supplier.cookie)
-      .set('x-active-org', supplierOrgId)
-      .send({
-        toDocumentId: poId,
-        toDocumentType: 'PO',
-        linkType: 'ACKNOWLEDGES',
-      })
-      .expect(201);
 
     // 4. Supplier transitions PO from ISSUED -> ACKNOWLEDGED.
     await request(app)

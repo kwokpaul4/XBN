@@ -434,7 +434,7 @@ A document publish goes through:
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
 | `GENERIC_DOCUMENT`   | `{ note: string, metadata?: object }`                                                                                                                                                                         | `PUBLISHED`   |
 | `PO`                 | See §2.1 / [API_REFERENCE.md](./API_REFERENCE.md#post-documents) — header (currency, payment terms, ship-to/bill-to addresses, requested delivery date) + lines (sku, description, quantity, unit price, UoM) | `DRAFT`       |
-| `ORDER_CONFIRMATION` | `{ poDocumentNumber: string, mode: FULL_ACCEPT \| ACCEPT_WITH_CHANGES \| REJECT }`                                                                                                                            | `DRAFT`       |
+| `ORDER_CONFIRMATION` | Discriminated union on `mode`: `FULL_ACCEPT` / `ACCEPT_WITH_CHANGES` (with `proposedChanges`) / `REJECT`. Always carries `poDocumentNumber` + `poDocumentId`. Auto-links `ACKNOWLEDGES → PO` on publish.      | `DRAFT`       |
 | `PO_CHANGE`          | `{ poDocumentNumber, poDocumentId, changeReason, revisedBody: <full PO body> }` — buyer-issued amendment                                                                                                      | `DRAFT`       |
 
 ### API
@@ -505,7 +505,7 @@ curl -X POST http://localhost:3000/documents \
 
 ### Portal
 
-Phase 2.1 ships buyer-side **My POs** (`/buyer/po`), **Create PO** (`/buyer/po/new`), and PO detail (`/buyer/po/:id`) with role-aware action buttons (Issue / Acknowledge / Mark in fulfilment / Close / Cancel). Supplier sees **Incoming POs** at `/supplier/po`. Phase 2.2 adds **Issue PO change** (`/buyer/po/:id/change`) and a PO_CHANGE detail page where the supplier accepts or rejects.
+Phase 2.1 ships buyer-side **My POs** (`/buyer/po`), **Create PO** (`/buyer/po/new`), and PO detail (`/buyer/po/:id`) with role-aware action buttons (Issue / Mark in fulfilment / Close / Cancel). Supplier sees **Incoming POs** at `/supplier/po`. Phase 2.2 adds **Issue PO change** (`/buyer/po/:id/change`) and a PO_CHANGE detail page where the supplier accepts or rejects. Phase 2.3 replaces the supplier's blunt Acknowledge button with a **3-mode acknowledgement form** at `/supplier/po/:id/acknowledge` (FULL_ACCEPT / ACCEPT_WITH_CHANGES with proposed line revisions / REJECT) plus a shared **OrderConfirmation detail** page at `/<role>/order-confirmation/:id` where the buyer accepts or rejects the supplier's response (and can deep-link to issue a PO_CHANGE).
 
 ---
 
@@ -611,6 +611,16 @@ ISSUED ─ (SUPPLIER_*, recipient) ────► ACCEPTED_BY_SUPPLIER
 ISSUED ─ (SUPPLIER_*, recipient) ────► REJECTED_BY_SUPPLIER
 ACCEPTED_BY_SUPPLIER, REJECTED_BY_SUPPLIER → terminal
 ```
+
+### ORDER_CONFIRMATION state machine (PHASES.md §2.3)
+
+```
+DRAFT ── (SUPPLIER_*, issuer) ───────► ISSUED
+ISSUED ─ (BUYER_*, recipient) ───────► ACCEPTED_BY_BUYER   [terminal]
+ISSUED ─ (BUYER_*, recipient) ───────► REJECTED_BY_BUYER   [terminal]
+```
+
+Buyer responses are most meaningful for `ACCEPT_WITH_CHANGES` — accepting the response means the buyer intends to issue a `PO_CHANGE` to materialise the supplier's proposed amendments. (The OC body itself never mutates the PO; only PO versions do.)
 
 ### API
 
@@ -845,6 +855,6 @@ Honest limits of the current build, so you don't go looking for these:
 
 ---
 
-**Last updated:** 2026-06-19 · Phase 2.1 (PO) and Phase 2.2 (PO_CHANGE) complete.
+**Last updated:** 2026-06-19 · Phase 2.1 (PO), 2.2 (PO_CHANGE), and 2.3 (ORDER_CONFIRMATION) complete.
 
 For architecture see [`../PHASES.md`](../PHASES.md). For task progress see [`../TASKS.md`](../TASKS.md).

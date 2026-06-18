@@ -13,19 +13,19 @@ Living task list for the XBN buyer-supplier document-exchange network. Mirrors t
 | Phase | Tasks | Done | In progress | Blocked | Deferred |
 |---|---|---|---|---|---|
 | Phase 1 — Foundation | 6 | **6** | 0 | 0 | 0 |
-| Phase 2 — Indirect procurement | 9 | **2** | 0 | 7 | 0 |
+| Phase 2 — Indirect procurement | 9 | **3** | 0 | 6 | 0 |
 | Phase 3 — Direct-materials SCC | 7 | 0 | 0 | 4 | 3 |
 | Phase 4 — Network features | 5 | 0 | 0 | 5 | 0 |
 | Phase 5 — Production readiness | 4 | 0 | 0 | 4 | 0 |
-| **Total** | **31** | **8** | **0** | **20** | **3** |
+| **Total** | **31** | **9** | **0** | **19** | **3** |
 
-**🎯 Milestone M1 reached** — Phase 1 substrate works end-to-end. The canonical PHASES.md Phase 1 verification choreography (org onboarding → trading relationship → GENERIC_DOCUMENT round-trip with attachment + supersede + cross-org rejection → PO ↔ ORDER_CONFIRMATION typed pair with state transitions audited) passes via supertest against real Postgres + MinIO.
+**🎯 Milestone M1 reached** — Phase 1 substrate works end-to-end.
 
-**Phase 2 progress** — #7 PO and #8 PO_CHANGE complete. Full §2.1 lifecycle (DRAFT → ISSUED → ACKNOWLEDGED → IN_FULFILLMENT → CLOSED + CANCELLED/CHANGED) and §2.2 PO_CHANGE choreography (DRAFT → ISSUED → ACCEPTED/REJECTED with PO→CHANGED precondition guard) shipped with portal forms.
+**Phase 2 progress** — #7 PO, #8 PO_CHANGE, and #9 ORDER_CONFIRMATION extension complete. Full §2.1 PO lifecycle, §2.2 change choreography (with the PO `→ CHANGED` precondition guard), and §2.3 three-mode acknowledgement (FULL_ACCEPT / ACCEPT_WITH_CHANGES with proposed line revisions / REJECT) plus buyer-response transitions (ACCEPTED_BY_BUYER / REJECTED_BY_BUYER) all shipped with portal forms. ORDER_CONFIRMATION publish now auto-links ACKNOWLEDGES → PO.
 
-**Currently unblocked (ready to work):** #9 Phase 2.3 — Order Confirmation extension (full ACCEPT_WITH_CHANGES path with proposed lines/dates).
+**Currently unblocked (ready to work):** #10 Phase 2.4 — Advance Ship Notice (ASN).
 
-**Test totals on the working tree:** 99 (58 document-core + 15 auth + 12 network + 14 API: 2 M1 acceptance + 7 PO lifecycle + 5 PO_CHANGE).
+**Test totals on the working tree:** 106 (58 document-core + 15 auth + 12 network + 21 API: 2 M1 + 7 PO + 5 PO_CHANGE + 7 ORDER_CONFIRMATION).
 
 ---
 
@@ -177,17 +177,11 @@ Delivered: full `DRAFT → ISSUED → ACKNOWLEDGED → IN_FULFILLMENT → CLOSED
 
 Delivered: PO_CHANGE document type with `DRAFT → ISSUED → ACCEPTED_BY_SUPPLIER | REJECTED_BY_SUPPLIER` state machine. Body carries the **complete revised PO body** (not a delta diff) plus `changeReason` and optional `affectedLineRefs` — matches Ariba's model. `SUPERSEDES → PO` link rule. PO state machine's `→ CHANGED` transition gated by a precondition guard at the route layer that requires an `ACCEPTED_BY_SUPPLIER` PO_CHANGE linked to the PO. Portal: **Issue PO change** button on buyer's PO detail when status ∈ {ISSUED, ACKNOWLEDGED, IN_FULFILLMENT}, change-form page pre-filled from latest PO body, **PO_CHANGE detail page** for both sides with Accept/Reject buttons for the supplier. 5 lifecycle tests covering happy path, no-change rejection, not-yet-accepted rejection, supplier-reject preserving PO state, body validation.
 
-### #9 — Phase 2.3: Order Confirmation / POAck ⬜
+### #9 — Phase 2.3: Order Confirmation / POAck ✅ completed
 
 **Spec:** [PHASES.md §2.3](./PHASES.md)
-**Blocked by:** #7
-**Blocks:** #15
 
-ORDER_CONFIRMATION / POAck (supplier→buyer). `ACKNOWLEDGES` → PO (or PO_CHANGE).
-- States: `DRAFT → ISSUED → ACCEPTED_BY_BUYER | REJECTED_BY_BUYER`
-- Modes: full-accept · accept-with-changes (proposed dates/quantities) · reject
-
-Partially shipped in #6; this task extends with accept-with-changes and rejection paths.
+Delivered: full §2.3 ORDER_CONFIRMATION schema as a Zod discriminated union over `mode` ∈ {`FULL_ACCEPT`, `ACCEPT_WITH_CHANGES`, `REJECT`}. `ACCEPT_WITH_CHANGES` carries a `proposedChanges` block with optional `revisedRequestedDeliveryDate` and per-line `revisedQuantity`/`revisedUnitPrice`/`revisedDeliveryDate`/`comments` — at least one revision required. State machine extended to `DRAFT → ISSUED → ACCEPTED_BY_BUYER | REJECTED_BY_BUYER` (buyer-response terminal states; meaningful for ACCEPT_WITH_CHANGES where the buyer signals intent to issue a PO_CHANGE to materialise). **Auto-link on publish**: every OC publish creates the `ACKNOWLEDGES → PO` link in the same call (a `linkWarning` field surfaces if the auto-link step fails, but the OC is still published). Portal: 3-mode `/supplier/po/:id/acknowledge` form replaces the blunt Acknowledge button; new `/<role>/order-confirmation/:id` detail page with role-aware Accept/Reject buttons and a deep-link to PO_CHANGE for ACCEPT_WITH_CHANGES. 7 lifecycle tests covering all three modes, both buyer responses, body validation, and wrong-actor rejection.
 
 ### #10 — Phase 2.4: Advance Ship Notice (ASN) ⬜
 

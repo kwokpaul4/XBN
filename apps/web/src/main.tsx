@@ -3,12 +3,14 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 
 import { Layout } from './Layout.tsx';
+import { AcknowledgePoPage } from './pages/AcknowledgePoPage.tsx';
 import { AdminPanel } from './pages/AdminPanel.tsx';
 import { BuyerPoListPage } from './pages/BuyerPoListPage.tsx';
 import { BuyerPortal } from './pages/BuyerPortal.tsx';
 import { CreatePoChangePage } from './pages/CreatePoChangePage.tsx';
 import { CreatePoPage } from './pages/CreatePoPage.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
+import { OrderConfirmationDetailPage } from './pages/OrderConfirmationDetailPage.tsx';
 import { PoChangeDetailPage } from './pages/PoChangeDetailPage.tsx';
 import { PoDetailPage } from './pages/PoDetailPage.tsx';
 import { RegisterPage } from './pages/RegisterPage.tsx';
@@ -32,11 +34,17 @@ ReactDOM.createRoot(root).render(
           <Route path="/buyer/po/:id" element={<PoDetailPage />} />
           <Route path="/buyer/po/:id/change" element={<CreatePoChangePage />} />
           <Route path="/buyer/po-change/:id" element={<PoChangeDetailPage />} />
+          <Route path="/buyer/order-confirmation/:id" element={<OrderConfirmationDetailPage />} />
 
           <Route path="/supplier" element={<SupplierPortal />} />
           <Route path="/supplier/po" element={<SupplierIncomingPosPage />} />
           <Route path="/supplier/po/:id" element={<PoDetailPage />} />
+          <Route path="/supplier/po/:id/acknowledge" element={<AcknowledgePoPage />} />
           <Route path="/supplier/po-change/:id" element={<PoChangeDetailPage />} />
+          <Route
+            path="/supplier/order-confirmation/:id"
+            element={<OrderConfirmationDetailPage />}
+          />
 
           <Route path="/admin" element={<AdminPanel />} />
           <Route path="*" element={<Navigate to="/" replace />} />

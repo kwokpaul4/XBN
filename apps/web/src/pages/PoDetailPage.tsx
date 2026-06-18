@@ -100,6 +100,18 @@ export function PoDetailPage(): React.ReactElement {
   const canIssueChange =
     isBuyer && doc.documentType === 'PO' && PO_CHANGEABLE_STATUSES.has(doc.status);
 
+  /**
+   * Supplier-side acknowledgement now goes through the §2.3 form rather
+   * than a blunt status transition — so we suppress the inline button and
+   * link to /supplier/po/:id/acknowledge instead. Other supplier
+   * transitions (none defined for PO right now) would still use the
+   * inline buttons.
+   */
+  const showAckButton = !isBuyer && doc.documentType === 'PO' && doc.status === 'ISSUED';
+  const inlineSupplierTransitions = transitionsForMe.filter(
+    (t) => !(showAckButton && t.to === 'ACKNOWLEDGED'),
+  );
+
   const transition = async (toStatus: string): Promise<void> => {
     setBusy(true);
     setErr(null);
@@ -149,9 +161,9 @@ export function PoDetailPage(): React.ReactElement {
         </span>
       </header>
 
-      {(transitionsForMe.length > 0 || canIssueChange) && (
+      {(transitionsForMe.length > 0 || canIssueChange || showAckButton) && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
-          {transitionsForMe.map((t) => (
+          {(isBuyer ? transitionsForMe : inlineSupplierTransitions).map((t) => (
             <button key={t.to} onClick={() => transition(t.to)} disabled={busy}>
               {t.label}
             </button>
@@ -166,8 +178,42 @@ export function PoDetailPage(): React.ReactElement {
               + Issue PO change
             </button>
           )}
+          {showAckButton && (
+            <button
+              type="button"
+              onClick={() => navigate(`/supplier/po/${id}/acknowledge`)}
+              disabled={busy}
+              style={{ background: '#10b981', color: 'white', border: 'none', padding: '6px 12px' }}
+            >
+              Acknowledge…
+            </button>
+          )}
         </div>
       )}
+
+      {/* Surface incoming ACKNOWLEDGES links so both sides can see the OC. */}
+      {doc.documentType === 'PO' &&
+        doc.incomingLinks.some((l) => l.linkType === 'ACKNOWLEDGES') && (
+          <div style={{ marginBottom: 24 }}>
+            <h3>Order confirmations</h3>
+            <ul>
+              {doc.incomingLinks
+                .filter((l) => l.linkType === 'ACKNOWLEDGES')
+                .map((l) => (
+                  <li key={l.fromDocumentId}>
+                    <Link
+                      to={
+                        (isBuyer ? '/buyer' : '/supplier') +
+                        `/order-confirmation/${l.fromDocumentId}`
+                      }
+                    >
+                      ORDER_CONFIRMATION → {l.fromDocumentId.slice(0, 12)}…
+                    </Link>
+                  </li>
+                ))}
+            </ul>
+          </div>
+        )}
 
       {incomingChanges.length > 0 && (
         <div style={{ marginBottom: 24 }}>

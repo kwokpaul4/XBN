@@ -202,6 +202,42 @@ export function documentsRouter(db: PrismaClient, storageCfg: StorageConfig): Ro
       res.status(400).json({ error: 'publish_rejected', reason: result.reason });
       return;
     }
+
+    // Auto-link from ORDER_CONFIRMATION → PO via ACKNOWLEDGES on publish.
+    // The body always carries poDocumentId (per the §2.3 schema), so we can
+    // create the lineage link immediately rather than asking the caller to
+    // make a second POST. Best-effort: a failure here doesn't roll back the
+    // publish — the OC exists; the link can be added after the fact.
+    if (parsed.data.documentType === 'ORDER_CONFIRMATION') {
+      const body = parsed.data.body as { poDocumentId?: string } | null;
+      if (body && typeof body.poDocumentId === 'string' && body.poDocumentId.length > 0) {
+        const linkResult = await linkOp(
+          { db, linkRegistry },
+          {
+            fromDocumentId: result.documentId,
+            fromDocumentType: 'ORDER_CONFIRMATION',
+            toDocumentId: body.poDocumentId,
+            toDocumentType: 'PO',
+            linkType: 'ACKNOWLEDGES',
+            actorUserId: ctx.userId,
+            actorOrgId: ctx.activeMembership.orgId,
+          },
+        );
+        // We surface link failures in the response so callers can react
+        // (e.g. PO not found, or already-linked OC); the OC itself
+        // remains published.
+        if (!linkResult.ok) {
+          res.status(201).json({
+            documentId: result.documentId,
+            versionId: result.versionId,
+            documentNumber: result.documentNumber,
+            linkWarning: linkResult.reason,
+          });
+          return;
+        }
+      }
+    }
+
     res.status(201).json({
       documentId: result.documentId,
       versionId: result.versionId,

@@ -28,10 +28,15 @@ import {
 import type { OrgRole } from '@xbn/db';
 import type { ZodTypeAny } from 'zod';
 
+import { asnModule } from './asn/index.js';
+import { creditMemoModule } from './credit-memo/index.js';
 import { genericDocumentModule } from './generic-document/index.js';
+import { goodsReceiptModule } from './goods-receipt/index.js';
+import { invoiceModule } from './invoice/index.js';
 import { orderConfirmationModule } from './order-confirmation/index.js';
 import { poChangeModule } from './po-change/index.js';
 import { poModule } from './po/index.js';
+import { remittanceAdviceModule } from './remittance-advice/index.js';
 
 export interface DocumentTypeModule {
   /** Document type identifier — must match the string used at publish time. */
@@ -49,6 +54,11 @@ const ALL_MODULES: ReadonlyArray<DocumentTypeModule> = [
   poModule,
   orderConfirmationModule,
   poChangeModule,
+  asnModule,
+  goodsReceiptModule,
+  invoiceModule,
+  creditMemoModule,
+  remittanceAdviceModule,
 ];
 
 export interface BuiltRegistry {

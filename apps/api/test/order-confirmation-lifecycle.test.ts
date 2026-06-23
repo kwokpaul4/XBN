@@ -181,7 +181,7 @@ describe('ORDER_CONFIRMATION §2.3 lifecycle', () => {
       })
       .expect(201);
     const ocId = ocRes.body.documentId as string;
-    expect(ocRes.body.linkWarning).toBeUndefined(); // auto-link succeeded
+    expect(ocRes.body.linkWarnings).toBeUndefined(); // auto-link succeeded
 
     // Verify the auto-link landed
     const ocDetail = await request(app)

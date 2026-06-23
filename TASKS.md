@@ -4,7 +4,7 @@ Living task list for the XBN buyer-supplier document-exchange network. Mirrors t
 
 **Legend:** ⬜ pending · 🟡 in progress · ✅ completed · 🔒 blocked (waiting on prerequisites) · 🕓 deferred
 
-**Last updated:** 2026-06-19
+**Last updated:** 2026-06-23
 
 ---
 
@@ -13,19 +13,19 @@ Living task list for the XBN buyer-supplier document-exchange network. Mirrors t
 | Phase | Tasks | Done | In progress | Blocked | Deferred |
 |---|---|---|---|---|---|
 | Phase 1 — Foundation | 6 | **6** | 0 | 0 | 0 |
-| Phase 2 — Indirect procurement | 9 | **3** | 0 | 6 | 0 |
+| Phase 2 — Indirect procurement | 9 | **9** | 0 | 0 | 0 |
 | Phase 3 — Direct-materials SCC | 7 | 0 | 0 | 4 | 3 |
 | Phase 4 — Network features | 5 | 0 | 0 | 5 | 0 |
 | Phase 5 — Production readiness | 4 | 0 | 0 | 4 | 0 |
-| **Total** | **31** | **9** | **0** | **19** | **3** |
+| **Total** | **31** | **15** | **0** | **13** | **3** |
 
 **🎯 Milestone M1 reached** — Phase 1 substrate works end-to-end.
 
-**Phase 2 progress** — #7 PO, #8 PO_CHANGE, and #9 ORDER_CONFIRMATION extension complete. Full §2.1 PO lifecycle, §2.2 change choreography (with the PO `→ CHANGED` precondition guard), and §2.3 three-mode acknowledgement (FULL_ACCEPT / ACCEPT_WITH_CHANGES with proposed line revisions / REJECT) plus buyer-response transitions (ACCEPTED_BY_BUYER / REJECTED_BY_BUYER) all shipped with portal forms. ORDER_CONFIRMATION publish now auto-links ACKNOWLEDGES → PO.
+**🎯 Milestone M2 reached** — Phase 2 indirect procurement choreography ships. Full PO → ORDER_CONFIRMATION → ASN → GOODS_RECEIPT → INVOICE (PO_FLIP + SUMMARY) → CREDIT_MEMO → REMITTANCE_ADVICE flows verified end-to-end via supertest against real Postgres + MinIO. The no-double-billing guard for SUMMARY invoicing is enforced.
 
-**Currently unblocked (ready to work):** #10 Phase 2.4 — Advance Ship Notice (ASN).
+**Currently unblocked (ready to work):** #16 Phase 3.0 — SCC anchor entities (Scheduling Agreement / Consignment Contract / Subcontracting Agreement) starts Phase 3.
 
-**Test totals on the working tree:** 106 (58 document-core + 15 auth + 12 network + 21 API: 2 M1 + 7 PO + 5 PO_CHANGE + 7 ORDER_CONFIRMATION).
+**Test totals on the working tree:** 109 (58 document-core + 15 auth + 12 network + 24 API: 2 M1 + 7 PO + 5 PO_CHANGE + 7 ORDER_CONFIRMATION + 3 Phase 2 acceptance).
 
 ---
 

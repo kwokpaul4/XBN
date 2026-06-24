@@ -8,6 +8,13 @@ This directory holds operations and reference material for the XBN buyer-supplie
 - **[`API_REFERENCE.md`](./API_REFERENCE.md)** — Endpoint-by-endpoint reference for the HTTP API.
 - **[`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md)** — Common problems and how to recover.
 
+## User acceptance tests
+
+Runnable UATs that gate each phase milestone:
+
+- **[`UAT_PHASE_2.md`](./UAT_PHASE_2.md)** — Phase 2 (M2) acceptance manual: three scenarios covering the full indirect-procurement choreography, summary invoicing, and the relationship-level summary-invoicing gate.
+- **[`uat-phase-2.sh`](./uat-phase-2.sh)** — Executable companion script. Drives the API end-to-end and asserts each step (~30 s to run). Exit 0 = Phase 2 signed off.
+
 ## Quick links
 
 - Repo root: [`README.md`](../README.md) · [`PHASES.md`](../PHASES.md) · [`CLAUDE.md`](../CLAUDE.md) · [`TASKS.md`](../TASKS.md)

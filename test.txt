@@ -1,0 +1,14 @@
+  // Open DevTools console on http://localhost:5173 (logged in as buyer)
+  fetch('/network/relationships', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-active-org': 'cmqrc2mxi0004x6mi7z27fyd6' },
+    credentials: 'include',
+    body: JSON.stringify({
+      buyerOrgId: 'cmqrc2mxi0004x6mi7z27fyd6',
+      supplierOrgId: 'cmqrelyi80008x6mi9f9fj624',
+      status: 'ACTIVE',
+      enabledDocumentTypes: ['PO','PO_CHANGE','ORDER_CONFIRMATION','ASN','GOODS_RECEIPT','INVOICE','CREDIT_MEMO','REMITTANCE_ADVICE'],
+      defaultCurrency: 'USD',
+      summaryInvoicingEnabled: true
+    })
+  }).then(r => r.json()).then(console.log)

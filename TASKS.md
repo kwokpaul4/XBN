@@ -14,18 +14,20 @@ Living task list for the XBN buyer-supplier document-exchange network. Mirrors t
 |---|---|---|---|---|---|
 | Phase 1 — Foundation | 6 | **6** | 0 | 0 | 0 |
 | Phase 2 — Indirect procurement | 9 | **9** | 0 | 0 | 0 |
-| Phase 3 — Direct-materials SCC | 7 | 0 | 0 | 4 | 3 |
+| Phase 3 — Direct-materials SCC | 7 | **4** | 0 | 0 | 3 |
 | Phase 4 — Network features | 5 | 0 | 0 | 5 | 0 |
 | Phase 5 — Production readiness | 4 | 0 | 0 | 4 | 0 |
-| **Total** | **31** | **15** | **0** | **13** | **3** |
+| **Total** | **31** | **19** | **0** | **9** | **3** |
 
 **🎯 Milestone M1 reached** — Phase 1 substrate works end-to-end.
 
 **🎯 Milestone M2 reached** — Phase 2 indirect procurement choreography ships. Full PO → ORDER_CONFIRMATION → ASN → GOODS_RECEIPT → INVOICE (PO_FLIP + SUMMARY) → CREDIT_MEMO → REMITTANCE_ADVICE flows verified end-to-end via supertest against real Postgres + MinIO. The no-double-billing guard for SUMMARY invoicing is enforced.
 
-**Currently unblocked (ready to work):** #16 Phase 3.0 — SCC anchor entities (Scheduling Agreement / Consignment Contract / Subcontracting Agreement) starts Phase 3.
+**🎯 Milestone M3 reached** — Phase 3 direct-materials SCC choreography ships. SCHEDULING_AGREEMENT (full DRAFT→ACTIVE↔SUSPENDED→TERMINATED lifecycle), CONSIGNMENT_CONTRACT, SUBCONTRACTING_AGREEMENT all publish. Forecast collaboration (FORECAST_PUBLISH → FORECAST_COMMIT discriminated by mode → revised FORECAST_PUBLISH via SUPERSEDES) verified. SA releases (SA_RELEASE_FORECAST + SA_RELEASE_JIT) with auto-link CALLS_OFF → SA verified. **The polymorphic-predecessor cross-phase test passes: a Phase 2 ASN ships against a JIT release (not a PO) and its SHIPS_AGAINST link resolves correctly.**
 
-**Test totals on the working tree:** 109 (58 document-core + 15 auth + 12 network + 24 API: 2 M1 + 7 PO + 5 PO_CHANGE + 7 ORDER_CONFIRMATION + 3 Phase 2 acceptance).
+**Currently unblocked (ready to work):** #23 Phase 4.1 Inbox / Outbox / cross-type document search opens Phase 4.
+
+**Test totals on the working tree:** 114 (58 document-core + 15 auth + 12 network + 29 API: 2 M1 + 7 PO + 5 PO_CHANGE + 7 ORDER_CONFIRMATION + 3 Phase 2 acceptance + 5 Phase 3 acceptance). Plus a 27-assertion `docs/uat-phase-3.sh` driving the full SCC choreography against a live API.
 
 ---
 
@@ -268,7 +270,7 @@ Five POs over a calendar month → all acknowledged/shipped/received → at mont
 
 Anchor entities are **long-lived contracts** (lifetime measured in years). All reuse Phase 1 substrate verbatim.
 
-### #16 — Phase 3.0: SCC anchor entities ⬜
+### #16 — Phase 3.0: SCC anchor entities ✅
 
 **Spec:** [PHASES.md §3 anchor entities](./PHASES.md)
 **Blocked by:** #15
@@ -281,7 +283,7 @@ Three new long-lived contract document types:
 
 Body schemas + state machines for each.
 
-### #17 — Phase 3.1: Forecast Collaboration ⬜
+### #17 — Phase 3.1: Forecast Collaboration ✅
 
 **Spec:** [PHASES.md §3.1](./PHASES.md)
 **Blocked by:** #16
@@ -290,7 +292,7 @@ Body schemas + state machines for each.
 - `FORECAST_PUBLISH` (buyer→supplier). Time-bucketed (e.g. weekly across 26-week horizon). Immutable. Supersession via `SUPERSEDES` → prior forecast for same window.
 - `FORECAST_COMMIT` (supplier→buyer). `RESPONDS_TO` → FORECAST_PUBLISH. Bucketed: `commit | commit-with-deviation | cannot-commit`.
 
-### #18 — Phase 3.2: Scheduling Agreement Releases ⬜
+### #18 — Phase 3.2: Scheduling Agreement Releases ✅
 
 **Spec:** [PHASES.md §3.2](./PHASES.md)
 **Blocked by:** #16
@@ -301,7 +303,7 @@ Body schemas + state machines for each.
 - Each release supersedes prior for same window.
 - **JIT releases produce ASNs** — extend Phase 2 ASN type with **polymorphic predecessor** (PO *or* SA release). **This is the key cross-phase substrate test.**
 
-### #19 — Phase 3: Acceptance choreography (M3 milestone task) ⬜
+### #19 — Phase 3: Acceptance choreography (M3 milestone task) ✅
 
 **Spec:** [PHASES.md "Verification" Phase 3](./PHASES.md)
 **Blocked by:** #17, #18

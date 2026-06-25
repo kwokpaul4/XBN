@@ -49,9 +49,18 @@ const HandlingUnit = z.object({
 });
 
 export const AsnBody = z.object({
-  /** PO this shipment fulfils, captured for round-trip safety. */
-  poDocumentNumber: z.string().min(1),
-  poDocumentId: z.string().min(1),
+  /** PO this shipment fulfils, captured for round-trip safety. Optional
+   *  because Phase 3.2 SA_RELEASE_JIT is the alternative predecessor —
+   *  exactly one of poDocumentId or saReleaseJitDocumentId should be
+   *  present. Both omitted → no auto-link (link can still be added via
+   *  explicit POST /links). */
+  poDocumentNumber: z.string().optional(),
+  poDocumentId: z.string().optional(),
+
+  /** Phase 3.2: ASN can ship against a JIT release instead of a PO. The
+   *  polymorphic-predecessor case from PHASES.md §3.2. */
+  saReleaseJitDocumentNumber: z.string().optional(),
+  saReleaseJitDocumentId: z.string().optional(),
 
   carrier: z.string().min(1),
   trackingNumber: z.string().optional(),

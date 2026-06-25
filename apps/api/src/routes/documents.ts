@@ -649,8 +649,24 @@ function computeAutoLinkPlans(
       ];
     }
     case 'ASN': {
-      // ASN → PO via SHIPS_AGAINST (Phase 2.4).
+      // ASN → PO via SHIPS_AGAINST (Phase 2.4) — OR — ASN → SA_RELEASE_JIT
+      // via SHIPS_AGAINST (Phase 3.2, polymorphic predecessor). The body
+      // carries either poDocumentId or saReleaseJitDocumentId; route picks
+      // whichever is present. If both are present (very unusual) we
+      // prefer the JIT release since it's the more specific predecessor.
+      const jitId = stringOrNull(b['saReleaseJitDocumentId']);
       const poId = stringOrNull(b['poDocumentId']);
+      if (jitId) {
+        return [
+          {
+            fromDocumentId,
+            fromDocumentType: 'ASN',
+            toDocumentId: jitId,
+            toDocumentType: 'SA_RELEASE_JIT',
+            linkType: 'SHIPS_AGAINST',
+          },
+        ];
+      }
       if (!poId) return [];
       return [
         {
@@ -772,6 +788,99 @@ function computeAutoLinkPlans(
             linkType: 'REMITS',
           });
         }
+      }
+      return plans;
+    }
+    case 'FORECAST_PUBLISH': {
+      // FORECAST_PUBLISH → SCHEDULING_AGREEMENT via CALLS_OFF (optional),
+      // and → FORECAST_PUBLISH via SUPERSEDES (when revising a prior
+      // forecast) — both Phase 3.1.
+      const plans: AutoLinkPlan[] = [];
+      const saId = stringOrNull(b['schedulingAgreementDocumentId']);
+      if (saId) {
+        plans.push({
+          fromDocumentId,
+          fromDocumentType: 'FORECAST_PUBLISH',
+          toDocumentId: saId,
+          toDocumentType: 'SCHEDULING_AGREEMENT',
+          linkType: 'CALLS_OFF',
+        });
+      }
+      const supersedesId = stringOrNull(b['supersedesForecastDocumentId']);
+      if (supersedesId) {
+        plans.push({
+          fromDocumentId,
+          fromDocumentType: 'FORECAST_PUBLISH',
+          toDocumentId: supersedesId,
+          toDocumentType: 'FORECAST_PUBLISH',
+          linkType: 'SUPERSEDES',
+        });
+      }
+      return plans;
+    }
+    case 'FORECAST_COMMIT': {
+      // FORECAST_COMMIT → FORECAST_PUBLISH via RESPONDS_TO (Phase 3.1).
+      const forecastId = stringOrNull(b['forecastDocumentId']);
+      if (!forecastId) return [];
+      return [
+        {
+          fromDocumentId,
+          fromDocumentType: 'FORECAST_COMMIT',
+          toDocumentId: forecastId,
+          toDocumentType: 'FORECAST_PUBLISH',
+          linkType: 'RESPONDS_TO',
+        },
+      ];
+    }
+    case 'SA_RELEASE_FORECAST': {
+      // SA_RELEASE_FORECAST → SCHEDULING_AGREEMENT via CALLS_OFF; optional
+      // SUPERSEDES → prior release (Phase 3.2).
+      const plans: AutoLinkPlan[] = [];
+      const saId = stringOrNull(b['schedulingAgreementDocumentId']);
+      if (saId) {
+        plans.push({
+          fromDocumentId,
+          fromDocumentType: 'SA_RELEASE_FORECAST',
+          toDocumentId: saId,
+          toDocumentType: 'SCHEDULING_AGREEMENT',
+          linkType: 'CALLS_OFF',
+        });
+      }
+      const supersedesId = stringOrNull(b['supersedesReleaseDocumentId']);
+      if (supersedesId) {
+        plans.push({
+          fromDocumentId,
+          fromDocumentType: 'SA_RELEASE_FORECAST',
+          toDocumentId: supersedesId,
+          toDocumentType: 'SA_RELEASE_FORECAST',
+          linkType: 'SUPERSEDES',
+        });
+      }
+      return plans;
+    }
+    case 'SA_RELEASE_JIT': {
+      // SA_RELEASE_JIT → SCHEDULING_AGREEMENT via CALLS_OFF; optional
+      // SUPERSEDES → prior JIT release (Phase 3.2).
+      const plans: AutoLinkPlan[] = [];
+      const saId = stringOrNull(b['schedulingAgreementDocumentId']);
+      if (saId) {
+        plans.push({
+          fromDocumentId,
+          fromDocumentType: 'SA_RELEASE_JIT',
+          toDocumentId: saId,
+          toDocumentType: 'SCHEDULING_AGREEMENT',
+          linkType: 'CALLS_OFF',
+        });
+      }
+      const supersedesId = stringOrNull(b['supersedesReleaseDocumentId']);
+      if (supersedesId) {
+        plans.push({
+          fromDocumentId,
+          fromDocumentType: 'SA_RELEASE_JIT',
+          toDocumentId: supersedesId,
+          toDocumentType: 'SA_RELEASE_JIT',
+          linkType: 'SUPERSEDES',
+        });
       }
       return plans;
     }

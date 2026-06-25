@@ -29,7 +29,10 @@ import type { OrgRole } from '@xbn/db';
 import type { ZodTypeAny } from 'zod';
 
 import { asnModule } from './asn/index.js';
+import { consignmentContractModule } from './consignment-contract/index.js';
 import { creditMemoModule } from './credit-memo/index.js';
+import { forecastCommitModule } from './forecast-commit/index.js';
+import { forecastPublishModule } from './forecast-publish/index.js';
 import { genericDocumentModule } from './generic-document/index.js';
 import { goodsReceiptModule } from './goods-receipt/index.js';
 import { invoiceModule } from './invoice/index.js';
@@ -37,6 +40,10 @@ import { orderConfirmationModule } from './order-confirmation/index.js';
 import { poChangeModule } from './po-change/index.js';
 import { poModule } from './po/index.js';
 import { remittanceAdviceModule } from './remittance-advice/index.js';
+import { saReleaseForecastModule } from './sa-release-forecast/index.js';
+import { saReleaseJitModule } from './sa-release-jit/index.js';
+import { schedulingAgreementModule } from './scheduling-agreement/index.js';
+import { subcontractingAgreementModule } from './subcontracting-agreement/index.js';
 
 export interface DocumentTypeModule {
   /** Document type identifier — must match the string used at publish time. */
@@ -50,7 +57,9 @@ export interface DocumentTypeModule {
 }
 
 const ALL_MODULES: ReadonlyArray<DocumentTypeModule> = [
+  // Phase 1 substrate-level type
   genericDocumentModule,
+  // Phase 2 indirect procurement
   poModule,
   orderConfirmationModule,
   poChangeModule,
@@ -59,6 +68,14 @@ const ALL_MODULES: ReadonlyArray<DocumentTypeModule> = [
   invoiceModule,
   creditMemoModule,
   remittanceAdviceModule,
+  // Phase 3 direct-materials SCC (this commit)
+  schedulingAgreementModule,
+  consignmentContractModule,
+  subcontractingAgreementModule,
+  forecastPublishModule,
+  forecastCommitModule,
+  saReleaseForecastModule,
+  saReleaseJitModule,
 ];
 
 export interface BuiltRegistry {

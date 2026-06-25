@@ -701,17 +701,110 @@ Initial: `PUBLISHED`. Mostly terminal; admins can `CANCELLED`.
 
 `ACCEPTED_BY_SUPPLIER`, `REJECTED_BY_SUPPLIER` are terminal.
 
+### `ASN` (PHASES.md §2.4)
+
+| from         | to           | role                             | side      |
+| ------------ | ------------ | -------------------------------- | --------- |
+| `DRAFT`      | `ISSUED`     | `SUPPLIER_USER`/`SUPPLIER_ADMIN` | issuer    |
+| `ISSUED`     | `IN_TRANSIT` | `SUPPLIER_USER`/`SUPPLIER_ADMIN` | issuer    |
+| `IN_TRANSIT` | `DELIVERED`  | `BUYER_USER`/`BUYER_ADMIN`       | recipient |
+| `ISSUED`     | `CANCELLED`  | `SUPPLIER_ADMIN`                 | issuer    |
+
+`DELIVERED`, `CANCELLED` are terminal. **Polymorphic predecessor**: an ASN's body carries either `poDocumentId` (Phase 2) _or_ `saReleaseJitDocumentId` (Phase 3.2); the auto-link resolves `SHIPS_AGAINST` to whichever is present.
+
+### `GOODS_RECEIPT` (PHASES.md §2.5)
+
+Initial: `POSTED` (mostly terminal). Auto-links `RECEIVES → ASN` and `FULFILLS → PO`.
+
+### `INVOICE` (PHASES.md §2.6)
+
+| from     | to                  | role                             | side      |
+| -------- | ------------------- | -------------------------------- | --------- |
+| `DRAFT`  | `ISSUED`            | `SUPPLIER_USER`/`SUPPLIER_ADMIN` | issuer    |
+| `ISSUED` | `ACCEPTED_BY_BUYER` | `BUYER_USER`/`BUYER_ADMIN`       | recipient |
+| `ISSUED` | `DISPUTED`          | `BUYER_USER`/`BUYER_ADMIN`       | recipient |
+
+Body is a discriminated union on `mode`: `PO_FLIP` (single-PO) or `SUMMARY` (consolidates many POs/GRs). The **no-double-billing guard** (`duplicate_link` on the `INVOICES` triple) rejects a SUMMARY invoice whose source set overlaps any prior accepted invoice.
+
+### `CREDIT_MEMO` (PHASES.md §2.7)
+
+| from     | to                  | role                             | side      |
+| -------- | ------------------- | -------------------------------- | --------- |
+| `DRAFT`  | `ISSUED`            | `SUPPLIER_USER`/`SUPPLIER_ADMIN` | issuer    |
+| `ISSUED` | `ACCEPTED_BY_BUYER` | `BUYER_USER`/`BUYER_ADMIN`       | recipient |
+
+Auto-links `CREDITS → INVOICE` on publish.
+
+### `REMITTANCE_ADVICE` (PHASES.md §2.8)
+
+Initial: `ISSUED` (terminal). **Notification only — XBN does not move money.** Auto-links `REMITS → INVOICE(s)` and optional `REMITS → CREDIT_MEMO`.
+
+### `SCHEDULING_AGREEMENT` / `CONSIGNMENT_CONTRACT` / `SUBCONTRACTING_AGREEMENT` (PHASES.md §3 anchors)
+
+All three anchor types share the same long-lived state machine:
+
+| from        | to           | role                       | side   |
+| ----------- | ------------ | -------------------------- | ------ |
+| `DRAFT`     | `ACTIVE`     | `BUYER_ADMIN`/`BUYER_USER` | issuer |
+| `DRAFT`     | `CANCELLED`  | `BUYER_ADMIN`              | issuer |
+| `ACTIVE`    | `SUSPENDED`  | `BUYER_ADMIN`              | issuer |
+| `ACTIVE`    | `TERMINATED` | `BUYER_ADMIN`              | issuer |
+| `SUSPENDED` | `ACTIVE`     | `BUYER_ADMIN`              | issuer |
+| `SUSPENDED` | `TERMINATED` | `BUYER_ADMIN`              | issuer |
+
+`TERMINATED`, `CANCELLED` are terminal. `SUSPENDED` is reversible — the right state for a temporary hold.
+
+### `FORECAST_PUBLISH` (PHASES.md §3.1)
+
+| from    | to       | role                       | side   |
+| ------- | -------- | -------------------------- | ------ |
+| `DRAFT` | `ISSUED` | `BUYER_USER`/`BUYER_ADMIN` | issuer |
+
+`ISSUED` is terminal. Revise via a new `FORECAST_PUBLISH` carrying `supersedesForecastDocumentId` (auto-links `SUPERSEDES → prior forecast`).
+
+### `FORECAST_COMMIT` (PHASES.md §3.1)
+
+| from    | to       | role                             | side   |
+| ------- | -------- | -------------------------------- | ------ |
+| `DRAFT` | `ISSUED` | `SUPPLIER_USER`/`SUPPLIER_ADMIN` | issuer |
+
+`ISSUED` is terminal. Body buckets are a Zod discriminated union over `mode`: `COMMIT` / `COMMIT_WITH_DEVIATION` / `CANNOT_COMMIT`.
+
+### `SA_RELEASE_FORECAST` / `SA_RELEASE_JIT` (PHASES.md §3.2)
+
+| from    | to       | role                       | side   |
+| ------- | -------- | -------------------------- | ------ |
+| `DRAFT` | `ISSUED` | `BUYER_USER`/`BUYER_ADMIN` | issuer |
+
+`ISSUED` is terminal. Each release type can carry `supersedesReleaseDocumentId` to auto-link `SUPERSEDES` against a prior release of the same type. `SA_RELEASE_JIT` is the firm call-off that an `ASN` ships against (the polymorphic-predecessor case).
+
 ---
 
 ## Link registry reference
 
-| from → to                               | linkType       | inboundCardinality | outboundCardinality | Notes                              |
-| --------------------------------------- | -------------- | ------------------ | ------------------- | ---------------------------------- |
-| `GENERIC_DOCUMENT` → `GENERIC_DOCUMENT` | `RESPONDS_TO`  | many               | one                 |                                    |
-| `ORDER_CONFIRMATION` → `PO`             | `ACKNOWLEDGES` | one                | one                 |                                    |
-| `PO_CHANGE` → `PO`                      | `SUPERSEDES`   | one                | one                 | Precondition for PO `→ CHANGED`    |
-| `PO` → `PO`                             | `SUPERSEDES`   | one                | one                 | Reserved for cross-PO supersession |
+| from → to                                      | linkType        | inboundCardinality | outboundCardinality | Notes                                                            |
+| ---------------------------------------------- | --------------- | ------------------ | ------------------- | ---------------------------------------------------------------- |
+| `GENERIC_DOCUMENT` → `GENERIC_DOCUMENT`        | `RESPONDS_TO`   | many               | one                 |                                                                  |
+| `ORDER_CONFIRMATION` → `PO`                    | `ACKNOWLEDGES`  | one                | one                 |                                                                  |
+| `PO_CHANGE` → `PO`                             | `SUPERSEDES`    | one                | one                 | Precondition for PO `→ CHANGED`                                  |
+| `PO` → `PO`                                    | `SUPERSEDES`    | one                | one                 | Reserved for cross-PO supersession                               |
+| `ASN` → `PO`                                   | `SHIPS_AGAINST` | many               | one                 | Multi-shipment supported (one PO → many ASNs)                    |
+| `ASN` → `SA_RELEASE_JIT`                       | `SHIPS_AGAINST` | many               | one                 | **Phase 3.2 polymorphic predecessor** — ASN against firm release |
+| `GOODS_RECEIPT` → `ASN`                        | `RECEIVES`      | one                | one                 |                                                                  |
+| `GOODS_RECEIPT` → `PO`                         | `FULFILLS`      | many               | one                 |                                                                  |
+| `INVOICE` → `PO`                               | `INVOICES`      | many               | many                | SUMMARY mode covers many POs                                     |
+| `INVOICE` → `GOODS_RECEIPT`                    | `INVOICES`      | many               | many                |                                                                  |
+| `CREDIT_MEMO` → `INVOICE`                      | `CREDITS`       | many               | one                 |                                                                  |
+| `REMITTANCE_ADVICE` → `INVOICE`                | `REMITS`        | many               | many                | Notification only                                                |
+| `REMITTANCE_ADVICE` → `CREDIT_MEMO`            | `REMITS`        | many               | many                |                                                                  |
+| `FORECAST_PUBLISH` → `SCHEDULING_AGREEMENT`    | `CALLS_OFF`     | many               | one                 | Phase 3.1                                                        |
+| `FORECAST_PUBLISH` → `FORECAST_PUBLISH`        | `SUPERSEDES`    | one                | one                 | Phase 3.1 — revised forecast                                     |
+| `FORECAST_COMMIT` → `FORECAST_PUBLISH`         | `RESPONDS_TO`   | many               | one                 | Phase 3.1                                                        |
+| `SA_RELEASE_FORECAST` → `SCHEDULING_AGREEMENT` | `CALLS_OFF`     | many               | one                 | Phase 3.2                                                        |
+| `SA_RELEASE_FORECAST` → `SA_RELEASE_FORECAST`  | `SUPERSEDES`    | one                | one                 | Phase 3.2 — revised release                                      |
+| `SA_RELEASE_JIT` → `SCHEDULING_AGREEMENT`      | `CALLS_OFF`     | many               | one                 | Phase 3.2                                                        |
+| `SA_RELEASE_JIT` → `SA_RELEASE_JIT`            | `SUPERSEDES`    | one                | one                 | Phase 3.2                                                        |
 
 ---
 
-**Last updated:** 2026-06-19 · Phase 2.1 (PO), 2.2 (PO_CHANGE), and 2.3 (ORDER_CONFIRMATION) complete.
+**Last updated:** 2026-06-25 · Phases 1.1–1.6, 2.1–2.8, 3.0–3.2 complete (M1, M2, M3 reached).

@@ -1,8 +1,8 @@
 # XBN — User Operations Manual
 
-This is the practical reference for actually using XBN. It covers everything that works today (Phase 1 / milestone M1).
+This is the practical reference for actually using XBN. It covers everything that works today (Phases 1, 2, and 3 / milestones M1, M2, M3).
 
-> **Scope note.** XBN is currently a buyer-supplier **document-exchange network** with the substrate complete and a minimal portal. Phase 2 (typed PO/ASN/GR/Invoice/Credit Memo/Remittance flows) and beyond are not yet built. See [`../PHASES.md`](../PHASES.md) for the full roadmap.
+> **Scope note.** XBN is a buyer-supplier **document-exchange network** with the substrate, full indirect-procurement choreography (PO → POAck → PO_CHANGE → ASN → GR → Invoice → Credit Memo → Remittance), and direct-materials SCC choreography (Scheduling Agreement / Consignment Contract / Subcontracting Agreement anchors + Forecast Collaboration + SA Releases) all complete via API. Portal forms today cover PO, PO_CHANGE, and ORDER_CONFIRMATION; everything else is API-only pending a focused UI follow-up. See [`../PHASES.md`](../PHASES.md) for the roadmap and [`../TASKS.md`](../TASKS.md) for status.
 
 ---
 
@@ -27,6 +27,7 @@ This is the practical reference for actually using XBN. It covers everything tha
 17. [End-to-end: Phase 1 happy path](#17-end-to-end-phase-1-happy-path)
 18. [Roles & permissions reference](#18-roles--permissions-reference)
 19. [What is NOT yet available](#19-what-is-not-yet-available)
+20. [Phase 3 SCC document flows (API)](#20-phase-3-scc-document-flows-api)
 
 Two parallel paths are documented for most operations:
 
@@ -430,12 +431,24 @@ A document publish goes through:
 
 ### Currently registered document types
 
-| Type                 | Body schema                                                                                                                                                                                                   | Initial state |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| `GENERIC_DOCUMENT`   | `{ note: string, metadata?: object }`                                                                                                                                                                         | `PUBLISHED`   |
-| `PO`                 | See §2.1 / [API_REFERENCE.md](./API_REFERENCE.md#post-documents) — header (currency, payment terms, ship-to/bill-to addresses, requested delivery date) + lines (sku, description, quantity, unit price, UoM) | `DRAFT`       |
-| `ORDER_CONFIRMATION` | Discriminated union on `mode`: `FULL_ACCEPT` / `ACCEPT_WITH_CHANGES` (with `proposedChanges`) / `REJECT`. Always carries `poDocumentNumber` + `poDocumentId`. Auto-links `ACKNOWLEDGES → PO` on publish.      | `DRAFT`       |
-| `PO_CHANGE`          | `{ poDocumentNumber, poDocumentId, changeReason, revisedBody: <full PO body> }` — buyer-issued amendment                                                                                                      | `DRAFT`       |
+| Type                       | Body schema                                                                                                                                                                                                                | Initial state | Phase     |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | --------- |
+| `GENERIC_DOCUMENT`         | `{ note: string, metadata?: object }`                                                                                                                                                                                      | `PUBLISHED`   | 1.6       |
+| `PO`                       | See §2.1 / [API_REFERENCE.md](./API_REFERENCE.md#post-documents) — header (currency, payment terms, ship-to/bill-to addresses, requested delivery date) + lines (sku, description, quantity, unit price, UoM)              | `DRAFT`       | 2.1       |
+| `ORDER_CONFIRMATION`       | Discriminated union on `mode`: `FULL_ACCEPT` / `ACCEPT_WITH_CHANGES` (with `proposedChanges`) / `REJECT`. Always carries `poDocumentNumber` + `poDocumentId`. Auto-links `ACKNOWLEDGES → PO` on publish.                   | `DRAFT`       | 2.3       |
+| `PO_CHANGE`                | `{ poDocumentNumber, poDocumentId, changeReason, revisedBody: <full PO body> }` — buyer-issued amendment. Auto-links `SUPERSEDES → PO` on publish.                                                                         | `DRAFT`       | 2.2       |
+| `ASN`                      | Shipment header (carrier, ship-from, dates) + lines. **Polymorphic predecessor**: carries either `poDocumentId` _or_ `saReleaseJitDocumentId` (Phase 3.2); the auto-link resolves `SHIPS_AGAINST` to whichever is present. | `DRAFT`       | 2.4 / 3.2 |
+| `GOODS_RECEIPT`            | Buyer's visibility copy of a receipt. Auto-links `RECEIVES → ASN` and `FULFILLS → PO`.                                                                                                                                     | `POSTED`      | 2.5       |
+| `INVOICE`                  | Discriminated union on `mode`: `PO_FLIP` (single-PO, auto-links `INVOICES → PO` and to each GR) / `SUMMARY` (consolidates many POs+GRs; the no-double-billing guard rejects overlap).                                      | `DRAFT`       | 2.6       |
+| `CREDIT_MEMO`              | Supplier-issued credit. Auto-links `CREDITS → INVOICE`.                                                                                                                                                                    | `DRAFT`       | 2.7       |
+| `REMITTANCE_ADVICE`        | **Notification only** — XBN does not move money. Auto-links `REMITS → Invoice(s)` and optional `REMITS → CreditMemo`.                                                                                                      | `ISSUED`      | 2.8       |
+| `SCHEDULING_AGREEMENT`     | Long-lived contract (lifetime in years). Header + target qty + plant + ship-to + validity window. **Anchor** of the SCC choreography.                                                                                      | `DRAFT`       | 3.0       |
+| `CONSIGNMENT_CONTRACT`     | Anchor for consignment movements/settlements. Stock location + reorder point + settlement cadence.                                                                                                                         | `DRAFT`       | 3.0       |
+| `SUBCONTRACTING_AGREEMENT` | Anchor for subcontract assembly. Finished good + components BOM + assembly fee.                                                                                                                                            | `DRAFT`       | 3.0       |
+| `FORECAST_PUBLISH`         | Buyer→supplier bucketed forecast over an SA. Auto-links `CALLS_OFF → SA`; optional `supersedesForecastDocumentId` auto-links `SUPERSEDES → prior forecast`.                                                                | `DRAFT`       | 3.1       |
+| `FORECAST_COMMIT`          | Supplier→buyer response. Buckets are a **Zod discriminated union over `mode`**: `COMMIT` / `COMMIT_WITH_DEVIATION` (with reason) / `CANNOT_COMMIT` (with reason). Auto-links `RESPONDS_TO → forecast`.                     | `DRAFT`       | 3.1       |
+| `SA_RELEASE_FORECAST`      | Buyer→supplier planning-grade release. Auto-links `CALLS_OFF → SA`; optional `supersedesReleaseDocumentId` → `SUPERSEDES`.                                                                                                 | `DRAFT`       | 3.2       |
+| `SA_RELEASE_JIT`           | Buyer→supplier firm call-off with delivery date+time. Same auto-link shape as forecast release. **Becomes the predecessor for an ASN** (the polymorphic case).                                                             | `DRAFT`       | 3.2       |
 
 ### API
 
@@ -622,6 +635,33 @@ ISSUED ─ (BUYER_*, recipient) ───────► REJECTED_BY_BUYER   [te
 
 Buyer responses are most meaningful for `ACCEPT_WITH_CHANGES` — accepting the response means the buyer intends to issue a `PO_CHANGE` to materialise the supplier's proposed amendments. (The OC body itself never mutates the PO; only PO versions do.)
 
+### Phase 3 SCC state machines (PHASES.md §3)
+
+**`SCHEDULING_AGREEMENT` / `CONSIGNMENT_CONTRACT` / `SUBCONTRACTING_AGREEMENT`** — all three anchor types share the same state machine. Long-lived contracts can be temporarily suspended and re-activated.
+
+```
+DRAFT ───── (BUYER_*, issuer) ────────► ACTIVE
+DRAFT ───── (BUYER_ADMIN, issuer) ────► CANCELLED       [terminal]
+ACTIVE ──── (BUYER_ADMIN, issuer) ────► SUSPENDED
+ACTIVE ──── (BUYER_ADMIN, issuer) ────► TERMINATED      [terminal]
+SUSPENDED ─ (BUYER_ADMIN, issuer) ────► ACTIVE
+SUSPENDED ─ (BUYER_ADMIN, issuer) ────► TERMINATED      [terminal]
+```
+
+**`FORECAST_PUBLISH`** / **`SA_RELEASE_FORECAST`** / **`SA_RELEASE_JIT`** — buyer-issued, two-state:
+
+```
+DRAFT ── (BUYER_*, issuer) ──────────► ISSUED            [terminal]
+```
+
+**`FORECAST_COMMIT`** — supplier-issued response, two-state:
+
+```
+DRAFT ── (SUPPLIER_*, issuer) ───────► ISSUED            [terminal]
+```
+
+These choreography documents are intentionally immutable once issued — supersession via a new document with a `SUPERSEDES` link is the way to "amend" them.
+
 ### API
 
 ```bash
@@ -660,12 +700,28 @@ Documents form a DAG via typed links. The link registry says which `(fromType, t
 
 ### Currently registered link rules
 
-| From → To                               | linkType       | Cardinality       | Notes                                    |
-| --------------------------------------- | -------------- | ----------------- | ---------------------------------------- |
-| `GENERIC_DOCUMENT` → `GENERIC_DOCUMENT` | `RESPONDS_TO`  | many in / one out |                                          |
-| `ORDER_CONFIRMATION` → `PO`             | `ACKNOWLEDGES` | one in / one out  |                                          |
-| `PO_CHANGE` → `PO`                      | `SUPERSEDES`   | one in / one out  | Required precondition for PO `→ CHANGED` |
-| `PO` → `PO`                             | `SUPERSEDES`   | one in / one out  | Reserved for cross-PO supersession       |
+| From → To                                      | linkType        | Cardinality        | Notes                                                            |
+| ---------------------------------------------- | --------------- | ------------------ | ---------------------------------------------------------------- |
+| `GENERIC_DOCUMENT` → `GENERIC_DOCUMENT`        | `RESPONDS_TO`   | many in / one out  |                                                                  |
+| `ORDER_CONFIRMATION` → `PO`                    | `ACKNOWLEDGES`  | one in / one out   |                                                                  |
+| `PO_CHANGE` → `PO`                             | `SUPERSEDES`    | one in / one out   | Required precondition for PO `→ CHANGED`                         |
+| `PO` → `PO`                                    | `SUPERSEDES`    | one in / one out   | Reserved for cross-PO supersession                               |
+| `ASN` → `PO`                                   | `SHIPS_AGAINST` | many in / one out  | Phase 2.4 — multi-shipment supported                             |
+| `ASN` → `SA_RELEASE_JIT`                       | `SHIPS_AGAINST` | many in / one out  | **Phase 3.2 polymorphic predecessor** — ASN against firm release |
+| `GOODS_RECEIPT` → `ASN`                        | `RECEIVES`      | one in / one out   | Phase 2.5                                                        |
+| `GOODS_RECEIPT` → `PO`                         | `FULFILLS`      | many in / one out  | Phase 2.5                                                        |
+| `INVOICE` → `PO`                               | `INVOICES`      | many in / many out | Phase 2.6 — SUMMARY mode covers many POs                         |
+| `INVOICE` → `GOODS_RECEIPT`                    | `INVOICES`      | many in / many out | Phase 2.6                                                        |
+| `CREDIT_MEMO` → `INVOICE`                      | `CREDITS`       | many in / one out  | Phase 2.7                                                        |
+| `REMITTANCE_ADVICE` → `INVOICE`                | `REMITS`        | many in / many out | Phase 2.8 — notification only                                    |
+| `REMITTANCE_ADVICE` → `CREDIT_MEMO`            | `REMITS`        | many in / many out | Phase 2.8                                                        |
+| `FORECAST_PUBLISH` → `SCHEDULING_AGREEMENT`    | `CALLS_OFF`     | many in / one out  | Phase 3.1                                                        |
+| `FORECAST_PUBLISH` → `FORECAST_PUBLISH`        | `SUPERSEDES`    | one in / one out   | Phase 3.1 — revised forecast                                     |
+| `FORECAST_COMMIT` → `FORECAST_PUBLISH`         | `RESPONDS_TO`   | many in / one out  | Phase 3.1                                                        |
+| `SA_RELEASE_FORECAST` → `SCHEDULING_AGREEMENT` | `CALLS_OFF`     | many in / one out  | Phase 3.2                                                        |
+| `SA_RELEASE_FORECAST` → `SA_RELEASE_FORECAST`  | `SUPERSEDES`    | one in / one out   | Phase 3.2 — revised release                                      |
+| `SA_RELEASE_JIT` → `SCHEDULING_AGREEMENT`      | `CALLS_OFF`     | many in / one out  | Phase 3.2                                                        |
+| `SA_RELEASE_JIT` → `SA_RELEASE_JIT`            | `SUPERSEDES`    | one in / one out   | Phase 3.2                                                        |
 
 ### API
 
@@ -824,13 +880,13 @@ You should see two version rows, one attachment, and audit-log entries for `CREA
 
 ### Org roles
 
-| Role             | Typical use                                                                                                       |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `BUYER_USER`     | Buyer-side user: views relationships, may eventually create docs (Phase 2 specifics).                             |
-| `BUYER_ADMIN`    | Buyer-side admin: configures relationships, issues invitations, transitions `DRAFT → ISSUED` on POs, cancels POs. |
-| `SUPPLIER_USER`  | Supplier-side user: acknowledges incoming POs (`ISSUED → ACKNOWLEDGED`), publishes `ORDER_CONFIRMATION`.          |
-| `SUPPLIER_ADMIN` | Supplier-side admin: same as `SUPPLIER_USER` plus relationship-level config when wired.                           |
-| `NETWORK_ADMIN`  | Network operator: cross-org visibility, audit, eventual moderation.                                               |
+| Role             | Typical use                                                                                                                                                  |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `BUYER_USER`     | Buyer-side user: views relationships, creates POs, publishes forecasts and releases (Phase 3.1/3.2).                                                         |
+| `BUYER_ADMIN`    | Buyer-side admin: configures relationships, issues invitations, transitions docs (all buyer-side state machines), activates/suspends/terminates SCC anchors. |
+| `SUPPLIER_USER`  | Supplier-side user: acknowledges incoming POs, publishes `ORDER_CONFIRMATION` and `FORECAST_COMMIT`, ships ASNs against POs or JIT releases.                 |
+| `SUPPLIER_ADMIN` | Supplier-side admin: same as `SUPPLIER_USER` plus relationship-level config when wired.                                                                      |
+| `NETWORK_ADMIN`  | Network operator: cross-org visibility, audit, eventual moderation.                                                                                          |
 
 A user holds memberships per org; the **active** membership for a request is decided by the `x-active-org` header (or first membership if absent).
 
@@ -846,15 +902,187 @@ A user holds memberships per org; the **active** membership for a request is dec
 
 Honest limits of the current build, so you don't go looking for these:
 
-- **Cross-type search** — Postgres FTS is wired to land in Phase 4.1 (basic listing exists via `GET /documents` but full-text and dashboards don't).
-- **Typed business documents beyond GENERIC_DOCUMENT, PO, ORDER_CONFIRMATION, PO_CHANGE** — ASN, GR, Invoice, Credit Memo, Remittance, Forecast, SA Releases, Subcontracting, Consignment, Quality — all coming in Phase 2/3.
+- **Portal UI for Phase 2.4–2.8 and all of Phase 3** — ASN, Goods Receipt, Invoice, Credit Memo, Remittance Advice, Scheduling Agreement, Consignment Contract, Subcontracting Agreement, Forecast Publish/Commit, and SA Releases are all **API-only today**. Portal forms are a focused UI follow-up after M3. Body schemas, state machines, and auto-link rules are all production-ready — the gap is purely the frontend.
+- **Cross-type search** — Postgres FTS lands in Phase 4.1 (basic listing exists via `GET /documents` but full-text and dashboards don't).
+- **Phase 3.3/3.4/3.5 — Subcontracting, Consignment movements/settlements, Quality Notifications** — explicitly deferred per TASKS.md #20–#22. Anchor types exist (CONSIGNMENT_CONTRACT, SUBCONTRACTING_AGREEMENT) but the choreography documents that hang off them don't ship until a customer requires.
 - **Email delivery** — verification + reset tokens come back in API responses (and are shown on the register page) instead of being emailed. Phase 4.5 wires MailHog and SMTP.
-- **Approval workflows / payment posting / MRP** — explicitly **out of scope**. XBN is a transaction hub; these belong in the buyer's ERP. (See [`PHASES.md`](../PHASES.md) and [`CLAUDE.md`](../CLAUDE.md) cross-cutting concern #6.)
+- **Approval workflows / payment posting / MRP / ATP / planning** — explicitly **out of scope forever**. XBN is a transaction hub; these belong in the buyer's ERP. Invoice match-status is a visibility flag, not an approval gate. Remittance Advice is a notification, not money movement. FORECAST_PUBLISH is buyer-issued forecast data, not the output of MRP. (See [`PHASES.md`](../PHASES.md) and [`CLAUDE.md`](../CLAUDE.md) cross-cutting concerns.)
 - **SSO / SAML** — deferred. Plain email + password only at MVP.
 - **Suspend / terminate relationship UI/API** — service-layer functions exist; HTTP routes will be added when the relationship-management UI lands in Phase 4.2.
 
 ---
 
-**Last updated:** 2026-06-19 · Phase 2.1 (PO), 2.2 (PO_CHANGE), and 2.3 (ORDER_CONFIRMATION) complete.
+## 20. Phase 3 SCC document flows (API)
+
+Phase 3 introduces the direct-materials SCC choreography on top of the Phase 1 substrate. The contract is identical to Phase 2: publish, transition, auto-link, audit. What changes is the **anchor pattern** — instead of a one-shot PO that terminates at remittance, an SCC choreography hangs off a long-lived `SCHEDULING_AGREEMENT` (or `CONSIGNMENT_CONTRACT` / `SUBCONTRACTING_AGREEMENT`) that recurs releases and forecasts for the life of the contract.
+
+> Before any of the SCC calls, the trading relationship's `enabledDocumentTypes` must include the relevant types (`SCHEDULING_AGREEMENT`, `FORECAST_PUBLISH`, `FORECAST_COMMIT`, `SA_RELEASE_FORECAST`, `SA_RELEASE_JIT`, plus `ASN` if you want the polymorphic shipment path). Without that, publish returns `reason.detail.kind: "document_type_not_enabled"`.
+
+### 20.1 Publish a Scheduling Agreement (the SCC hub)
+
+```bash
+curl -X POST http://localhost:3000/documents \
+  -H "Content-Type: application/json" \
+  -H "x-active-org: $BUYER_ORG_ID" \
+  -b buyer-cookies.txt \
+  -d '{
+    "documentType":   "SCHEDULING_AGREEMENT",
+    "recipientOrgId": "'"$SUPPLIER_ORG_ID"'",
+    "body": {
+      "itemSku": "BOLT-M8",
+      "itemDescription": "M8 hex bolt",
+      "targetQuantity": 100000,
+      "unitOfMeasure": "EA",
+      "unitPrice": 0.5,
+      "currency": "USD",
+      "validityStart": "2026-01-01",
+      "validityEnd":   "2026-12-31",
+      "plant": "PLANT-001",
+      "shipTo": { "name": "Plant 1", "line1": "1 Plant Way", "city": "Plantcity", "countryCode": "US" },
+      "paymentTermsRef": "NET-30",
+      "incoterms": "FOB"
+    }
+  }'
+# → { "documentId": "...", "documentNumber": "SCHEDULING_AGREEMENT-000001", "versionId": "..." }
+```
+
+Activate it before publishing anything that calls off it:
+
+```bash
+curl -X POST http://localhost:3000/documents/$SA_ID/transition \
+  -H "Content-Type: application/json" -H "x-active-org: $BUYER_ORG_ID" -b buyer-cookies.txt \
+  -d '{ "fromStatus": "DRAFT", "toStatus": "ACTIVE" }'
+```
+
+`CONSIGNMENT_CONTRACT` and `SUBCONTRACTING_AGREEMENT` follow the same shape with their own body schemas (see §10 doc-types table).
+
+### 20.2 Forecast collaboration (Phase 3.1)
+
+Buyer publishes a bucketed forecast over the SA. The auto-linker creates `CALLS_OFF → SA`.
+
+```bash
+curl -X POST http://localhost:3000/documents \
+  -H "Content-Type: application/json" -H "x-active-org: $BUYER_ORG_ID" -b buyer-cookies.txt \
+  -d '{
+    "documentType":   "FORECAST_PUBLISH",
+    "recipientOrgId": "'"$SUPPLIER_ORG_ID"'",
+    "body": {
+      "schedulingAgreementDocumentNumber": "SCHEDULING_AGREEMENT-000001",
+      "schedulingAgreementDocumentId":     "'"$SA_ID"'",
+      "itemSku": "BOLT-M8", "itemDescription": "M8 hex bolt", "unitOfMeasure": "EA",
+      "horizonStart": "2026-01-01", "horizonEnd": "2026-03-31",
+      "buckets": [
+        { "periodStart":"2026-01-01","periodEnd":"2026-01-31","forecastQuantity":10000 },
+        { "periodStart":"2026-02-01","periodEnd":"2026-02-28","forecastQuantity":12000 }
+      ]
+    }
+  }'
+```
+
+Supplier responds with a `FORECAST_COMMIT`. Bucket `mode` is a discriminated union: `COMMIT` / `COMMIT_WITH_DEVIATION` (with `deviationReason`) / `CANNOT_COMMIT` (with `reason`). The auto-linker creates `RESPONDS_TO → forecast`.
+
+```bash
+curl -X POST http://localhost:3000/documents \
+  -H "Content-Type: application/json" -H "x-active-org: $SUPPLIER_ORG_ID" -b supplier-cookies.txt \
+  -d '{
+    "documentType":   "FORECAST_COMMIT",
+    "recipientOrgId": "'"$BUYER_ORG_ID"'",
+    "body": {
+      "forecastDocumentNumber": "FORECAST_PUBLISH-000001",
+      "forecastDocumentId":     "'"$FP_ID"'",
+      "itemSku": "BOLT-M8", "unitOfMeasure": "EA",
+      "buckets": [
+        { "mode":"COMMIT","periodStart":"2026-01-01","periodEnd":"2026-01-31","committedQuantity":10000 },
+        { "mode":"COMMIT_WITH_DEVIATION","periodStart":"2026-02-01","periodEnd":"2026-02-28","committedQuantity":8000,"deviationReason":"Holiday capacity" }
+      ]
+    }
+  }'
+```
+
+To **revise** the forecast, publish a new `FORECAST_PUBLISH` with `supersedesForecastDocumentId` pointing at the old one — the auto-linker adds `SUPERSEDES → prior forecast` on top of the `CALLS_OFF → SA` link.
+
+### 20.3 SA Releases (Phase 3.2)
+
+Two release flavours, both buyer→supplier and both auto-linking `CALLS_OFF → SA`:
+
+- **`SA_RELEASE_FORECAST`** — planning-grade, weekly windows. Use this to give the supplier a rolling view of upcoming demand.
+- **`SA_RELEASE_JIT`** — firm call-off, includes `requestedDeliveryTime`. This is what the supplier actually ships against.
+
+```bash
+# Firm JIT release
+curl -X POST http://localhost:3000/documents \
+  -H "Content-Type: application/json" -H "x-active-org: $BUYER_ORG_ID" -b buyer-cookies.txt \
+  -d '{
+    "documentType":   "SA_RELEASE_JIT",
+    "recipientOrgId": "'"$SUPPLIER_ORG_ID"'",
+    "body": {
+      "schedulingAgreementDocumentNumber": "SCHEDULING_AGREEMENT-000001",
+      "schedulingAgreementDocumentId":     "'"$SA_ID"'",
+      "itemSku": "BOLT-M8",
+      "windowStart": "2026-02-20", "windowEnd": "2026-02-22",
+      "releaseLines": [
+        { "requestedDeliveryDate":"2026-02-21","requestedDeliveryTime":"08:00","quantity":1500,"unitOfMeasure":"EA" }
+      ]
+    }
+  }'
+```
+
+To supersede a prior forecast release (e.g. tighter window or revised quantities), include `supersedesReleaseDocumentId` — the auto-linker adds `SUPERSEDES → prior release`.
+
+### 20.4 ASN against a JIT release (the polymorphic predecessor)
+
+This is the **cross-phase substrate test** — the same Phase 2 `ASN` type works against either a `PO` _or_ a `SA_RELEASE_JIT`. The body carries `saReleaseJitDocumentId` instead of `poDocumentId`; the auto-linker resolves `SHIPS_AGAINST` to whichever is present.
+
+```bash
+curl -X POST http://localhost:3000/documents \
+  -H "Content-Type: application/json" -H "x-active-org: $SUPPLIER_ORG_ID" -b supplier-cookies.txt \
+  -d '{
+    "documentType":   "ASN",
+    "recipientOrgId": "'"$BUYER_ORG_ID"'",
+    "body": {
+      "saReleaseJitDocumentNumber": "SA_RELEASE_JIT-000001",
+      "saReleaseJitDocumentId":     "'"$JIT_ID"'",
+      "carrier": "UPS",
+      "shippedAt": "2026-02-20",
+      "expectedDeliveryDate": "2026-02-21",
+      "shipFrom": { "name":"Supplier Plant","line1":"1 Supply Lane","city":"Supplycity","countryCode":"US" },
+      "lines": [
+        { "lineRef":"BOLT-M8","sku":"BOLT-M8","shippedQuantity":1500,"unitOfMeasure":"EA" }
+      ]
+    }
+  }'
+# → { "documentId":"...", "documentNumber":"ASN-000001" }
+# Fetch the ASN: outgoingLinks contains exactly one
+#   { linkType:"SHIPS_AGAINST", toDocumentId: $JIT_ID }
+```
+
+### 20.5 SCC anchor lifecycle
+
+Long-lived contracts can be suspended (e.g. supplier under audit) and re-activated:
+
+```bash
+# Suspend
+curl -X POST http://localhost:3000/documents/$SA_ID/transition \
+  -H "Content-Type: application/json" -H "x-active-org: $BUYER_ORG_ID" -b buyer-cookies.txt \
+  -d '{ "fromStatus": "ACTIVE", "toStatus": "SUSPENDED" }'
+
+# Re-activate
+curl -X POST http://localhost:3000/documents/$SA_ID/transition \
+  -H "Content-Type: application/json" -H "x-active-org: $BUYER_ORG_ID" -b buyer-cookies.txt \
+  -d '{ "fromStatus": "SUSPENDED", "toStatus": "ACTIVE" }'
+
+# Permanently end
+curl -X POST http://localhost:3000/documents/$SA_ID/transition \
+  -H "Content-Type: application/json" -H "x-active-org: $BUYER_ORG_ID" -b buyer-cookies.txt \
+  -d '{ "fromStatus": "ACTIVE", "toStatus": "TERMINATED" }'
+```
+
+`TERMINATED` and `CANCELLED` are terminal — once there, no further releases/forecasts can be issued against the agreement. `SUSPENDED` is reversible: it's the right state for a temporary hold.
+
+For the full SCC choreography end-to-end (with assertions), see [`UAT_PHASE_3.md`](./UAT_PHASE_3.md) and [`uat-phase-3.sh`](./uat-phase-3.sh).
+
+---
+
+**Last updated:** 2026-06-25 · Phases 1.1–1.6, 2.1–2.8, and 3.0–3.2 complete (M1, M2, M3 reached).
 
 For architecture see [`../PHASES.md`](../PHASES.md). For task progress see [`../TASKS.md`](../TASKS.md).

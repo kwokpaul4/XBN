@@ -4,16 +4,18 @@ This directory holds operations and reference material for the XBN buyer-supplie
 
 ## What's here
 
-- **[`OPERATIONS.md`](./OPERATIONS.md)** — User operations manual. Step-by-step instructions for everything you can do with XBN today: starting the stack, registering accounts, creating orgs, establishing trading relationships, exchanging documents, attaching files, etc. Both web-portal and API (curl) flows are covered.
-- **[`API_REFERENCE.md`](./API_REFERENCE.md)** — Endpoint-by-endpoint reference for the HTTP API.
+- **[`OPERATIONS.md`](./OPERATIONS.md)** — User operations manual. Step-by-step instructions for everything you can do with XBN today: starting the stack, registering accounts, creating orgs, establishing trading relationships, exchanging documents (indirect procurement + direct-materials SCC), attaching files, etc. Both web-portal and API (curl) flows are covered.
+- **[`API_REFERENCE.md`](./API_REFERENCE.md)** — Endpoint-by-endpoint reference for the HTTP API. Includes the state machine and link registry reference for every document type (Phases 1–3).
 - **[`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md)** — Common problems and how to recover.
 
 ## User acceptance tests
 
 Runnable UATs that gate each phase milestone:
 
-- **[`UAT_PHASE_2.md`](./UAT_PHASE_2.md)** — Phase 2 (M2) acceptance manual: three scenarios covering the full indirect-procurement choreography, summary invoicing, and the relationship-level summary-invoicing gate.
-- **[`uat-phase-2.sh`](./uat-phase-2.sh)** — Executable companion script. Drives the API end-to-end and asserts each step (~30 s to run). Exit 0 = Phase 2 signed off.
+- **[`UAT_PHASE_2.md`](./UAT_PHASE_2.md)** — Phase 2 (M2) acceptance manual: nine scenarios, 53 assertions covering the full indirect-procurement choreography (PO → POAck → PO_CHANGE → ASN → GR → Invoice → Credit Memo → Remittance).
+- **[`uat-phase-2.sh`](./uat-phase-2.sh)** — Executable companion. Drives the API end-to-end and asserts each step (~30 s).
+- **[`UAT_PHASE_3.md`](./UAT_PHASE_3.md)** — Phase 3 (M3) acceptance manual: five scenarios, 27 assertions covering the direct-materials SCC choreography (Scheduling Agreement / Consignment Contract / Subcontracting Agreement anchors, Forecast Collaboration, SA Releases, **and the polymorphic-predecessor cross-phase test — Phase 2 ASN ships against a JIT release**).
+- **[`uat-phase-3.sh`](./uat-phase-3.sh)** — Executable companion (~15 s).
 
 ## Quick links
 

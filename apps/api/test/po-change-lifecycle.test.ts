@@ -231,14 +231,8 @@ describe('PO_CHANGE §2.2 lifecycle', () => {
       })
       .expect(201);
     const changeId = changeRes.body.documentId as string;
-
-    // Buyer links PO_CHANGE → PO
-    await request(app)
-      .post(`/documents/${changeId}/links`)
-      .set('Cookie', s.buyer.cookie)
-      .set('x-active-org', s.buyerOrgId)
-      .send({ toDocumentId: poId, toDocumentType: 'PO', linkType: 'SUPERSEDES' })
-      .expect(201);
+    // SUPERSEDES → PO is auto-linked by the publish route — no explicit
+    // POST /links call needed.
 
     // Buyer transitions PO_CHANGE: DRAFT → ISSUED
     await request(app)
@@ -314,12 +308,6 @@ describe('PO_CHANGE §2.2 lifecycle', () => {
       .expect(201);
     const changeId = changeRes.body.documentId as string;
     await request(app)
-      .post(`/documents/${changeId}/links`)
-      .set('Cookie', s.buyer.cookie)
-      .set('x-active-org', s.buyerOrgId)
-      .send({ toDocumentId: poId, toDocumentType: 'PO', linkType: 'SUPERSEDES' })
-      .expect(201);
-    await request(app)
       .post(`/documents/${changeId}/transition`)
       .set('Cookie', s.buyer.cookie)
       .set('x-active-org', s.buyerOrgId)
@@ -352,12 +340,6 @@ describe('PO_CHANGE §2.2 lifecycle', () => {
       })
       .expect(201);
     const changeId = changeRes.body.documentId as string;
-    await request(app)
-      .post(`/documents/${changeId}/links`)
-      .set('Cookie', s.buyer.cookie)
-      .set('x-active-org', s.buyerOrgId)
-      .send({ toDocumentId: poId, toDocumentType: 'PO', linkType: 'SUPERSEDES' })
-      .expect(201);
     await request(app)
       .post(`/documents/${changeId}/transition`)
       .set('Cookie', s.buyer.cookie)

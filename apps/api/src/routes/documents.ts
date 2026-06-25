@@ -631,6 +631,23 @@ function computeAutoLinkPlans(
         },
       ];
     }
+    case 'PO_CHANGE': {
+      // PO_CHANGE → PO via SUPERSEDES (Phase 2.2). The §2.2 precondition
+      // guard on PO `→ CHANGED` reads this link to decide whether an
+      // accepted change exists, so the link must exist for the guard
+      // to pass.
+      const poId = stringOrNull(b['poDocumentId']);
+      if (!poId) return [];
+      return [
+        {
+          fromDocumentId,
+          fromDocumentType: 'PO_CHANGE',
+          toDocumentId: poId,
+          toDocumentType: 'PO',
+          linkType: 'SUPERSEDES',
+        },
+      ];
+    }
     case 'ASN': {
       // ASN → PO via SHIPS_AGAINST (Phase 2.4).
       const poId = stringOrNull(b['poDocumentId']);

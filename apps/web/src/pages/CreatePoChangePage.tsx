@@ -91,17 +91,10 @@ export function CreatePoChangePage(): React.ReactElement {
       });
       const changeId = changeRes.documentId;
 
-      // 2. Link SUPERSEDES → original PO
-      await api(`/documents/${changeId}/links`, {
-        method: 'POST',
-        body: JSON.stringify({
-          toDocumentId: doc.id,
-          toDocumentType: 'PO',
-          linkType: 'SUPERSEDES',
-        }),
-      });
+      // SUPERSEDES → PO is auto-linked by the publish route — no explicit
+      // POST /links call needed.
 
-      // 3. Transition PO_CHANGE: DRAFT → ISSUED
+      // 2. Transition PO_CHANGE: DRAFT → ISSUED
       await api(`/documents/${changeId}/transition`, {
         method: 'POST',
         body: JSON.stringify({ fromStatus: 'DRAFT', toStatus: 'ISSUED' }),

@@ -15,9 +15,9 @@ Living task list for the XBN buyer-supplier document-exchange network. Mirrors t
 | Phase 1 — Foundation | 6 | **6** | 0 | 0 | 0 |
 | Phase 2 — Indirect procurement | 9 | **9** | 0 | 0 | 0 |
 | Phase 3 — Direct-materials SCC | 7 | **4** | 0 | 0 | 3 |
-| Phase 4 — Network features | 5 | 0 | 0 | 5 | 0 |
+| Phase 4 — Network features | 5 | **5** | 0 | 0 | 0 |
 | Phase 5 — Production readiness | 4 | 0 | 0 | 4 | 0 |
-| **Total** | **31** | **19** | **0** | **9** | **3** |
+| **Total** | **31** | **24** | **0** | **4** | **3** |
 
 **🎯 Milestone M1 reached** — Phase 1 substrate works end-to-end.
 
@@ -25,9 +25,11 @@ Living task list for the XBN buyer-supplier document-exchange network. Mirrors t
 
 **🎯 Milestone M3 reached** — Phase 3 direct-materials SCC choreography ships. SCHEDULING_AGREEMENT (full DRAFT→ACTIVE↔SUSPENDED→TERMINATED lifecycle), CONSIGNMENT_CONTRACT, SUBCONTRACTING_AGREEMENT all publish. Forecast collaboration (FORECAST_PUBLISH → FORECAST_COMMIT discriminated by mode → revised FORECAST_PUBLISH via SUPERSEDES) verified. SA releases (SA_RELEASE_FORECAST + SA_RELEASE_JIT) with auto-link CALLS_OFF → SA verified. **The polymorphic-predecessor cross-phase test passes: a Phase 2 ASN ships against a JIT release (not a PO) and its SHIPS_AGAINST link resolves correctly.**
 
-**Currently unblocked (ready to work):** #23 Phase 4.1 Inbox / Outbox / cross-type document search opens Phase 4.
+**🎯 Milestone M4 reached** — Phase 4 network features ship. Cross-type search + inbox/outbox filters (`q`, `fromDate`, `toDate`, `counterpartyOrgId`) live on `GET /documents`. Counterparties endpoint returns every active trading partner with role/enabled doc types/last-activity. Buyer + supplier dashboards surface tile counts derived from document status. Supplier scorecards compute PO-ack SLA, ASN accuracy, invoice match rate, and on-time delivery live from the document corpus (no snapshot job at MVP). Notification outbox writes a row per recipient-org user on every document publish and status change; portal notification bell polls, marks read, and mark-all-read works. Portal pages ship: **Inbox / Outbox**, **Trading Partners**, **Buyer Dashboard**, **Supplier Dashboard**, **Scorecards**, plus the header notification bell.
 
-**Test totals on the working tree:** 114 (58 document-core + 15 auth + 12 network + 29 API: 2 M1 + 7 PO + 5 PO_CHANGE + 7 ORDER_CONFIRMATION + 3 Phase 2 acceptance + 5 Phase 3 acceptance). Plus a 27-assertion `docs/uat-phase-3.sh` driving the full SCC choreography against a live API.
+**Currently unblocked (ready to work):** #28 Phase 5.1 Observability opens Phase 5.
+
+**Test totals on the working tree:** 119 (58 document-core + 15 auth + 12 network + 34 API: 2 M1 + 7 PO + 5 PO_CHANGE + 7 ORDER_CONFIRMATION + 3 Phase 2 acceptance + 5 Phase 3 acceptance + 5 Phase 4 acceptance). Plus 27 UAT shell assertions for Phase 3.
 
 ---
 
@@ -344,7 +346,7 @@ Pursue only when a customer requires.
 
 ## Phase 4 — Network-Wide Features
 
-### #23 — Phase 4.1: Inbox / Outbox / cross-type document search ⬜
+### #23 — Phase 4.1: Inbox / Outbox / cross-type document search ✅
 
 **Spec:** [PHASES.md §4.1](./PHASES.md)
 **Blocked by:** #19
@@ -352,7 +354,7 @@ Pursue only when a customer requires.
 
 Per-user inbox (docs addressed to user's org) and outbox (docs issued by user's org), filterable by type, status, counterparty, date. Cross-type search over indexed scalars + Postgres `tsvector` full-text on `document_number` and reference fields. **No** Elasticsearch at MVP.
 
-### #24 — Phase 4.2: Supplier directory & trading-partner management UI ⬜
+### #24 — Phase 4.2: Supplier directory & trading-partner management UI ✅
 
 **Spec:** [PHASES.md §4.2](./PHASES.md)
 **Blocked by:** #19
@@ -362,7 +364,7 @@ Per-user inbox (docs addressed to user's org) and outbox (docs issued by user's 
 - Supplier-side: list of buyer customers (same)
 - Network admin: cross-org search, audit, relationship lifecycle
 
-### #25 — Phase 4.3: Status dashboards ⬜
+### #25 — Phase 4.3: Status dashboards ✅
 
 **Spec:** [PHASES.md §4.3](./PHASES.md)
 **Blocked by:** #19
@@ -372,7 +374,7 @@ Queries on `documents` ⨝ `document_links` — no aggregation service needed.
 - **Buyer:** open POs awaiting acknowledgement, ASNs in transit, GRs pending entry, invoices pending review, releases unconfirmed
 - **Supplier:** POs to acknowledge, releases to commit, ASNs to ship, invoices submitted, payments received
 
-### #26 — Phase 4.4: Network-relevant supplier scorecards ⬜
+### #26 — Phase 4.4: Network-relevant supplier scorecards ✅
 
 **Spec:** [PHASES.md §4.4](./PHASES.md)
 **Blocked by:** #19
@@ -386,7 +388,7 @@ Only metrics observable from the document corpus:
 
 Nightly aggregator into `supplier_scorecard_snapshots(buyer_org_id, supplier_org_id, period)`. **No live joins.** Excludes subjective ratings and internal financial accuracy.
 
-### #27 — Phase 4.5: Notifications (in-app + email) ⬜
+### #27 — Phase 4.5: Notifications (in-app + email) ✅
 
 **Spec:** [PHASES.md §4.5](./PHASES.md)
 **Blocked by:** #19

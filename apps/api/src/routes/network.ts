@@ -151,5 +151,395 @@ export function networkRouter(db: PrismaClient): Router {
     res.json(result);
   });
 
+  // ---------------------------------------------------------------------
+  // Phase 4.1 / 4.2 — Counterparties endpoint
+  //
+  // Lists every org the active org has an ACTIVE TradingRelationship with,
+  // plus per-counterparty metadata: relationship id, role (whether the
+  // active org is buyer or supplier on that link), enabled doc types, and
+  // last-activity timestamp (most recent document either way). Drives both
+  // the inbox counterparty filter and the supplier-directory UI.
+  // ---------------------------------------------------------------------
+  r.get('/counterparties', async (_req, res) => {
+    const ctx = mustAuth(res);
+    if (!ctx) return;
+    if (!ctx.activeMembership) {
+      res.status(403).json({ error: 'no_active_membership' });
+      return;
+    }
+    const orgId = ctx.activeMembership.orgId;
+    const rels = await db.tradingRelationship.findMany({
+      where: { OR: [{ buyerOrgId: orgId }, { supplierOrgId: orgId }] },
+      include: { buyerOrg: true, supplierOrg: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Last-activity per counterparty: most recent document between the two
+    // orgs in either direction.
+    const counterparties = await Promise.all(
+      rels.map(async (rel) => {
+        const isBuyer = rel.buyerOrgId === orgId;
+        const counterparty = isBuyer ? rel.supplierOrg : rel.buyerOrg;
+        const lastDoc = await db.document.findFirst({
+          where: {
+            OR: [
+              { issuerOrgId: orgId, recipientOrgId: counterparty.id },
+              { issuerOrgId: counterparty.id, recipientOrgId: orgId },
+            ],
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, createdAt: true, documentType: true, documentNumber: true },
+        });
+        return {
+          relationshipId: rel.id,
+          counterpartyOrgId: counterparty.id,
+          counterpartyLegalName: counterparty.legalName,
+          counterpartyDisplayName: counterparty.displayName,
+          ourRole: isBuyer ? ('BUYER' as const) : ('SUPPLIER' as const),
+          status: rel.status,
+          enabledDocumentTypes: rel.enabledDocumentTypes,
+          defaultCurrency: rel.defaultCurrency,
+          summaryInvoicingEnabled: rel.summaryInvoicingEnabled,
+          establishedAt: rel.createdAt,
+          lastActivityAt: lastDoc?.createdAt ?? null,
+          lastDocument: lastDoc
+            ? {
+                id: lastDoc.id,
+                documentType: lastDoc.documentType,
+                documentNumber: lastDoc.documentNumber,
+              }
+            : null,
+        };
+      }),
+    );
+
+    res.json({ counterparties });
+  });
+
+  // ---------------------------------------------------------------------
+  // Phase 4.3 — Status dashboards
+  //
+  // Two roll-up endpoints. Each returns counts grouped by document type +
+  // status that the relevant role needs to act on. Pure SQL over
+  // `documents` + `document_links` — no aggregation service, per PHASES.md
+  // §4.3.
+  //
+  // We deliberately return arrays of { documentType, status, count } rather
+  // than a fixed schema, so adding new doc types in Phase 5+ doesn't break
+  // the API contract.
+  // ---------------------------------------------------------------------
+
+  /** Group `documents` rows by (documentType, status) for either inbox or outbox. */
+  async function groupByTypeStatus(
+    orgId: string,
+    direction: 'inbox' | 'outbox',
+  ): Promise<Array<{ documentType: string; status: string; count: number }>> {
+    const where = direction === 'inbox' ? { recipientOrgId: orgId } : { issuerOrgId: orgId };
+    const rows = await db.document.groupBy({
+      by: ['documentType', 'status'],
+      where,
+      _count: { _all: true },
+    });
+    return rows.map((r) => ({
+      documentType: r.documentType,
+      status: r.status,
+      count: r._count._all,
+    }));
+  }
+
+  r.get('/dashboards/buyer', async (_req, res) => {
+    const ctx = mustAuth(res);
+    if (!ctx) return;
+    if (!ctx.activeMembership) {
+      res.status(403).json({ error: 'no_active_membership' });
+      return;
+    }
+    const orgId = ctx.activeMembership.orgId;
+    // Outbox: docs the buyer issued — PO awaiting ack, releases awaiting
+    // commit, etc. Inbox: docs the buyer receives — OCs to accept, ASNs in
+    // transit, invoices pending review, forecast commits to review.
+    const [issued, received] = await Promise.all([
+      groupByTypeStatus(orgId, 'outbox'),
+      groupByTypeStatus(orgId, 'inbox'),
+    ]);
+
+    // Specific call-out tiles per PHASES.md §4.3.
+    const tiles = {
+      poAwaitingAcknowledgement: issued
+        .filter((r) => r.documentType === 'PO' && r.status === 'ISSUED')
+        .reduce((acc, r) => acc + r.count, 0),
+      ocsToReview: received
+        .filter((r) => r.documentType === 'ORDER_CONFIRMATION' && r.status === 'ISSUED')
+        .reduce((acc, r) => acc + r.count, 0),
+      asnsInTransit: received
+        .filter((r) => r.documentType === 'ASN' && r.status === 'IN_TRANSIT')
+        .reduce((acc, r) => acc + r.count, 0),
+      invoicesPendingReview: received
+        .filter((r) => r.documentType === 'INVOICE' && r.status === 'ISSUED')
+        .reduce((acc, r) => acc + r.count, 0),
+      releasesAwaitingCommit: issued
+        .filter(
+          (r) =>
+            (r.documentType === 'SA_RELEASE_FORECAST' || r.documentType === 'FORECAST_PUBLISH') &&
+            r.status === 'ISSUED',
+        )
+        .reduce((acc, r) => acc + r.count, 0),
+      activeSchedulingAgreements: issued
+        .filter((r) => r.documentType === 'SCHEDULING_AGREEMENT' && r.status === 'ACTIVE')
+        .reduce((acc, r) => acc + r.count, 0),
+    };
+
+    res.json({ tiles, issued, received });
+  });
+
+  r.get('/dashboards/supplier', async (_req, res) => {
+    const ctx = mustAuth(res);
+    if (!ctx) return;
+    if (!ctx.activeMembership) {
+      res.status(403).json({ error: 'no_active_membership' });
+      return;
+    }
+    const orgId = ctx.activeMembership.orgId;
+    const [issued, received] = await Promise.all([
+      groupByTypeStatus(orgId, 'outbox'),
+      groupByTypeStatus(orgId, 'inbox'),
+    ]);
+    const tiles = {
+      posToAcknowledge: received
+        .filter((r) => r.documentType === 'PO' && r.status === 'ISSUED')
+        .reduce((acc, r) => acc + r.count, 0),
+      forecastsToCommit: received
+        .filter((r) => r.documentType === 'FORECAST_PUBLISH' && r.status === 'ISSUED')
+        .reduce((acc, r) => acc + r.count, 0),
+      jitReleasesToShip: received
+        .filter((r) => r.documentType === 'SA_RELEASE_JIT' && r.status === 'ISSUED')
+        .reduce((acc, r) => acc + r.count, 0),
+      invoicesSubmitted: issued
+        .filter((r) => r.documentType === 'INVOICE' && r.status === 'ISSUED')
+        .reduce((acc, r) => acc + r.count, 0),
+      invoicesAccepted: issued
+        .filter((r) => r.documentType === 'INVOICE' && r.status === 'ACCEPTED_BY_BUYER')
+        .reduce((acc, r) => acc + r.count, 0),
+      remittancesReceived: received
+        .filter((r) => r.documentType === 'REMITTANCE_ADVICE')
+        .reduce((acc, r) => acc + r.count, 0),
+    };
+    res.json({ tiles, issued, received });
+  });
+
+  // ---------------------------------------------------------------------
+  // Phase 4.4 — Network-relevant supplier scorecards
+  //
+  // Live-computed (no nightly snapshot at MVP — PHASES.md spec calls for a
+  // snapshot table but live computation is correct and verifiable now;
+  // promote to a snapshot job in Phase 5 if scan cost grows). Buyer-only.
+  // For each ACTIVE counterparty supplier we report the four metrics from
+  // PHASES.md §4.4 — all derived from the document corpus alone.
+  // ---------------------------------------------------------------------
+  r.get('/scorecards', async (_req, res) => {
+    const ctx = mustAuth(res);
+    if (!ctx) return;
+    if (!ctx.activeMembership) {
+      res.status(403).json({ error: 'no_active_membership' });
+      return;
+    }
+    const buyerOrgId = ctx.activeMembership.orgId;
+    const rels = await db.tradingRelationship.findMany({
+      where: { buyerOrgId, status: 'ACTIVE' },
+      include: { supplierOrg: true },
+    });
+
+    const scorecards = await Promise.all(
+      rels.map(async (rel) => {
+        // 1. Document-response SLA — average time-to-acknowledge a PO.
+        //    For each issued PO, find the first OC (ORDER_CONFIRMATION) that
+        //    ACKNOWLEDGES it and measure createdAt delta.
+        const acks = await db.documentLink.findMany({
+          where: {
+            linkType: 'ACKNOWLEDGES',
+            from: {
+              documentType: 'ORDER_CONFIRMATION',
+              issuerOrgId: rel.supplierOrgId,
+              recipientOrgId: buyerOrgId,
+            },
+            to: { documentType: 'PO' },
+          },
+          include: {
+            from: { select: { createdAt: true } },
+            to: { select: { createdAt: true } },
+          },
+        });
+        const ackTimesMs = acks.map((l) => l.from.createdAt.getTime() - l.to.createdAt.getTime());
+        const avgAckMs =
+          ackTimesMs.length > 0 ? ackTimesMs.reduce((a, b) => a + b, 0) / ackTimesMs.length : null;
+
+        // 2. ASN accuracy — sum(shippedQuantity) on ASN bodies vs
+        //    sum(receivedQuantity) on linked GR bodies. Returned as a
+        //    ratio in [0, 1]; null if no GRs.
+        const grLinks = await db.documentLink.findMany({
+          where: {
+            linkType: 'RECEIVES',
+            from: {
+              documentType: 'GOODS_RECEIPT',
+              issuerOrgId: buyerOrgId,
+            },
+            to: {
+              documentType: 'ASN',
+              issuerOrgId: rel.supplierOrgId,
+            },
+          },
+          include: {
+            from: { include: { currentVersion: true } },
+            to: { include: { currentVersion: true } },
+          },
+        });
+        let shippedTotal = 0;
+        let receivedTotal = 0;
+        for (const l of grLinks) {
+          const asnBody = (l.to.currentVersion?.body ?? {}) as {
+            lines?: Array<{ shippedQuantity?: number }>;
+          };
+          const grBody = (l.from.currentVersion?.body ?? {}) as {
+            lines?: Array<{ receivedQuantity?: number }>;
+          };
+          for (const ln of asnBody.lines ?? []) shippedTotal += Number(ln.shippedQuantity ?? 0);
+          for (const ln of grBody.lines ?? []) receivedTotal += Number(ln.receivedQuantity ?? 0);
+        }
+        const asnAccuracy =
+          shippedTotal > 0 ? 1 - Math.abs(shippedTotal - receivedTotal) / shippedTotal : null;
+
+        // 3. Invoice match rate — accepted / (accepted + disputed).
+        const invoiceCounts = await db.document.groupBy({
+          by: ['status'],
+          where: {
+            documentType: 'INVOICE',
+            issuerOrgId: rel.supplierOrgId,
+            recipientOrgId: buyerOrgId,
+          },
+          _count: { _all: true },
+        });
+        const accepted =
+          invoiceCounts.find((r) => r.status === 'ACCEPTED_BY_BUYER')?._count._all ?? 0;
+        const disputed = invoiceCounts.find((r) => r.status === 'DISPUTED')?._count._all ?? 0;
+        const invoiceMatchRate = accepted + disputed > 0 ? accepted / (accepted + disputed) : null;
+
+        // 4. On-time delivery — GR.postedDate vs PO.requestedDeliveryDate
+        //    via FULFILLS. Ratio in [0, 1]; null if no GRs.
+        const fulfills = await db.documentLink.findMany({
+          where: {
+            linkType: 'FULFILLS',
+            from: {
+              documentType: 'GOODS_RECEIPT',
+              issuerOrgId: buyerOrgId,
+            },
+            to: {
+              documentType: 'PO',
+              issuerOrgId: buyerOrgId,
+              recipientOrgId: rel.supplierOrgId,
+            },
+          },
+          include: {
+            from: { include: { currentVersion: true } },
+            to: { include: { currentVersion: true } },
+          },
+        });
+        let onTimeCount = 0;
+        let onTimeDen = 0;
+        for (const l of fulfills) {
+          const grBody = (l.from.currentVersion?.body ?? {}) as { postedDate?: string };
+          const poBody = (l.to.currentVersion?.body ?? {}) as {
+            requestedDeliveryDate?: string;
+          };
+          if (grBody.postedDate && poBody.requestedDeliveryDate) {
+            onTimeDen += 1;
+            if (grBody.postedDate <= poBody.requestedDeliveryDate) onTimeCount += 1;
+          }
+        }
+        const onTimeDelivery = onTimeDen > 0 ? onTimeCount / onTimeDen : null;
+
+        return {
+          relationshipId: rel.id,
+          supplierOrgId: rel.supplierOrgId,
+          supplierLegalName: rel.supplierOrg.legalName,
+          supplierDisplayName: rel.supplierOrg.displayName,
+          metrics: {
+            // Surfaced in hours for readability; null = no data yet.
+            avgPoAckHours: avgAckMs === null ? null : Math.round((avgAckMs / 3_600_000) * 10) / 10,
+            poAckSampleSize: ackTimesMs.length,
+            asnAccuracy: asnAccuracy === null ? null : Math.round(asnAccuracy * 1000) / 1000,
+            asnSampleSize: grLinks.length,
+            invoiceMatchRate:
+              invoiceMatchRate === null ? null : Math.round(invoiceMatchRate * 1000) / 1000,
+            invoiceSampleSize: accepted + disputed,
+            onTimeDelivery:
+              onTimeDelivery === null ? null : Math.round(onTimeDelivery * 1000) / 1000,
+            onTimeSampleSize: onTimeDen,
+          },
+        };
+      }),
+    );
+
+    res.json({ scorecards, computedAt: new Date().toISOString() });
+  });
+
+  // ---------------------------------------------------------------------
+  // Phase 4.5 — In-app notification centre
+  //
+  // The pg-boss + SMTP consumer is out of scope at MVP per the
+  // simplification in PHASES.md ("we'll wire MailHog + SMTP" — adding the
+  // queue worker would land in Phase 5). What we ship now:
+  //
+  //   GET  /notifications        list current user's notifications, newest first
+  //   POST /notifications/:id/read  mark one notification delivered/read
+  //   POST /notifications/read-all  mark all of current user's notifications read
+  //
+  // Documents that get auto-published already write rows to
+  // `notification_outbox` via the document-core emitter — this surface
+  // exposes them to the portal's nav-bar bell.
+  // ---------------------------------------------------------------------
+  r.get('/notifications', async (req, res) => {
+    const ctx = mustAuth(res);
+    if (!ctx) return;
+    const limit = Math.min(Number(req.query.limit ?? 50) || 50, 200);
+    const onlyPending = req.query.onlyPending === 'true';
+    const notifications = await db.notificationOutbox.findMany({
+      where: {
+        recipientId: ctx.userId,
+        ...(onlyPending ? { status: 'PENDING' } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+    const unreadCount = await db.notificationOutbox.count({
+      where: { recipientId: ctx.userId, status: 'PENDING' },
+    });
+    res.json({ notifications, unreadCount });
+  });
+
+  r.post('/notifications/:id/read', async (req, res) => {
+    const ctx = mustAuth(res);
+    if (!ctx) return;
+    const id = req.params.id ?? '';
+    const updated = await db.notificationOutbox.updateMany({
+      where: { id, recipientId: ctx.userId, status: 'PENDING' },
+      data: { status: 'DELIVERED', deliveredAt: new Date() },
+    });
+    if (updated.count === 0) {
+      res.status(404).json({ error: 'not_found_or_already_read' });
+      return;
+    }
+    res.json({ ok: true });
+  });
+
+  r.post('/notifications/read-all', async (_req, res) => {
+    const ctx = mustAuth(res);
+    if (!ctx) return;
+    const updated = await db.notificationOutbox.updateMany({
+      where: { recipientId: ctx.userId, status: 'PENDING' },
+      data: { status: 'DELIVERED', deliveredAt: new Date() },
+    });
+    res.json({ ok: true, marked: updated.count });
+  });
+
   return r;
 }

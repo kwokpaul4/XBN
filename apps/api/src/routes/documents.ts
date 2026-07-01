@@ -11,6 +11,7 @@ import { z } from 'zod';
 import {
   AttachmentStorage,
   link as linkOp,
+  NotificationEmitter,
   PrismaNetworkNumberingStrategy,
   publish,
   supersede,
@@ -59,6 +60,23 @@ const ListQuery = z.object({
   status: z.string().optional(),
   /** Counterparty filter — the *other* org. */
   counterpartyOrgId: z.string().optional(),
+  /** Free-text search across `documentNumber` and indexed scalar reference fields.
+   *  Case-insensitive substring match. Phase 4.1 uses ILIKE over the indexed
+   *  scalars rather than a tsvector index — search corpus is small (rows
+   *  scoped to the active org) and avoiding the migration keeps Phase 4.1
+   *  shippable as part of the broader Phase 4 batch. Promotion to tsvector
+   *  is straightforward later if cardinality grows. */
+  q: z.string().min(1).optional(),
+  /** Issued-on (issueDate) lower bound, ISO date. */
+  fromDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  /** Issued-on upper bound (exclusive), ISO date. */
+  toDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
   /** Pagination, simple offset for Phase 2. */
   limit: z.coerce.number().int().positive().max(200).default(50),
   offset: z.coerce.number().int().nonnegative().default(0),
@@ -80,6 +98,32 @@ export function documentsRouter(db: PrismaClient, storageCfg: StorageConfig): Ro
   const numbering = new PrismaNetworkNumberingStrategy(db);
   const { bodySchemas, linkRegistry, stateMachines } = buildDocumentTypeRegistry();
   const storage = new AttachmentStorage(db, { ...storageCfg, forcePathStyle: true });
+  const emitter = new NotificationEmitter(db);
+
+  /**
+   * Phase 4.5 — fan a notification out to every user with an active
+   * membership in `orgId`. Best-effort: errors are swallowed so a hiccup in
+   * the outbox table never breaks document publish/transition.
+   */
+  async function notifyOrgUsers(
+    orgId: string,
+    eventType: string,
+    documentId: string,
+    payload: Record<string, string | number | boolean | null>,
+  ): Promise<void> {
+    try {
+      const memberships = await db.userOrgMembership.findMany({
+        where: { orgId },
+        select: { userId: true },
+      });
+      const recipientUserIds = memberships.map((m) => m.userId);
+      if (recipientUserIds.length === 0) return;
+      await emitter.emit({ eventType, documentId, recipientUserIds, payload });
+    } catch {
+      // Don't let notification problems bubble up — they are not part of
+      // the document choreography's correctness boundary.
+    }
+  }
 
   // ---------------------------------------------------------------------
   // GET /documents — list scoped to the active org
@@ -97,7 +141,8 @@ export function documentsRouter(db: PrismaClient, storageCfg: StorageConfig): Ro
       return;
     }
     const orgId = ctx.activeMembership.orgId;
-    const { box, documentType, status, counterpartyOrgId, limit, offset } = parsed.data;
+    const { box, documentType, status, counterpartyOrgId, q, fromDate, toDate, limit, offset } =
+      parsed.data;
 
     const orgFilter =
       box === 'inbox'
@@ -115,15 +160,42 @@ export function documentsRouter(db: PrismaClient, storageCfg: StorageConfig): Ro
         }
       : {};
 
+    // §4.1 cross-type search: case-insensitive substring on `documentNumber`
+    // and `referenceNumber`. Both columns are already indexed for filtering;
+    // adding ILIKE on top is acceptable at MVP cardinality.
+    const qFilter = q
+      ? {
+          OR: [
+            { documentNumber: { contains: q, mode: 'insensitive' as const } },
+            { referenceNumber: { contains: q, mode: 'insensitive' as const } },
+          ],
+        }
+      : {};
+
+    // §4.1 date-range over indexed `issueDate`.
+    const dateFilter =
+      fromDate || toDate
+        ? {
+            issueDate: {
+              ...(fromDate ? { gte: new Date(fromDate + 'T00:00:00Z') } : {}),
+              ...(toDate ? { lt: new Date(toDate + 'T00:00:00Z') } : {}),
+            },
+          }
+        : {};
+
+    const where = {
+      AND: [
+        orgFilter,
+        counterpartyFilter,
+        qFilter,
+        dateFilter,
+        ...(documentType !== undefined ? [{ documentType }] : []),
+        ...(status !== undefined ? [{ status }] : []),
+      ],
+    };
+
     const documents = await db.document.findMany({
-      where: {
-        AND: [
-          orgFilter,
-          counterpartyFilter,
-          ...(documentType !== undefined ? [{ documentType }] : []),
-          ...(status !== undefined ? [{ status }] : []),
-        ],
-      },
+      where,
       orderBy: { createdAt: 'desc' },
       take: limit,
       skip: offset,
@@ -142,16 +214,7 @@ export function documentsRouter(db: PrismaClient, storageCfg: StorageConfig): Ro
       },
     });
 
-    const total = await db.document.count({
-      where: {
-        AND: [
-          orgFilter,
-          counterpartyFilter,
-          ...(documentType !== undefined ? [{ documentType }] : []),
-          ...(status !== undefined ? [{ status }] : []),
-        ],
-      },
-    });
+    const total = await db.document.count({ where });
 
     res.json({
       documents: documents.map((d) => ({
@@ -343,6 +406,13 @@ export function documentsRouter(db: PrismaClient, storageCfg: StorageConfig): Ro
       documentNumber: result.documentNumber,
       ...(linkWarnings.length > 0 && { linkWarnings }),
     });
+
+    // Fire-and-forget notify to recipient org's users.
+    void notifyOrgUsers(parsed.data.recipientOrgId, 'DOCUMENT_PUBLISHED', result.documentId, {
+      documentType: parsed.data.documentType,
+      documentNumber: result.documentNumber,
+      issuerOrgId: ctx.activeMembership.orgId,
+    });
   });
 
   r.get('/documents/:id', async (req, res) => {
@@ -421,7 +491,13 @@ export function documentsRouter(db: PrismaClient, storageCfg: StorageConfig): Ro
     }
     const doc = await db.document.findUnique({
       where: { id },
-      select: { documentType: true, issuerOrgId: true },
+      select: {
+        id: true,
+        documentType: true,
+        documentNumber: true,
+        issuerOrgId: true,
+        recipientOrgId: true,
+      },
     });
     if (!doc) {
       res.status(404).json({ error: 'not_found' });
@@ -479,6 +555,16 @@ export function documentsRouter(db: PrismaClient, storageCfg: StorageConfig): Ro
       return;
     }
     res.json({ nextStatus: result.nextStatus });
+
+    // Notify the other side of the relationship of the state change.
+    const other =
+      doc.issuerOrgId === ctx.activeMembership.orgId ? doc.recipientOrgId : doc.issuerOrgId;
+    void notifyOrgUsers(other, 'DOCUMENT_STATUS_CHANGED', doc.id, {
+      documentType: doc.documentType,
+      documentNumber: doc.documentNumber,
+      fromStatus: parsed.data.fromStatus,
+      toStatus: parsed.data.toStatus,
+    });
   });
 
   r.post('/documents/:id/links', async (req, res) => {

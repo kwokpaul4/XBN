@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, Outlet, useNavigate } from 'react-router-dom';
 import { api } from './api.ts';
 import { switchOrg, useMe } from './auth-state.ts';
+import { NotificationBell } from './pages/NotificationBell.tsx';
 
 export function Layout(): React.ReactElement {
   const { me, loading, refresh } = useMe();
@@ -30,12 +31,21 @@ export function Layout(): React.ReactElement {
     <div style={pad}>
       <header style={headerStyle}>
         <h1 style={{ margin: 0 }}>XBN</h1>
-        <nav style={{ display: 'flex', gap: 16 }}>
+        <nav style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <Link to="/buyer">Buyer</Link>
+          <Link to="/buyer/dashboard">Dashboard</Link>
+          <Link to="/buyer/inbox">Inbox</Link>
+          <Link to="/buyer/counterparties">Partners</Link>
+          <Link to="/buyer/scorecards">Scorecards</Link>
+          <span style={{ borderLeft: '1px solid #ccc', height: 20 }} />
           <Link to="/supplier">Supplier</Link>
+          <Link to="/supplier/dashboard">Dashboard</Link>
+          <Link to="/supplier/inbox">Inbox</Link>
+          <span style={{ borderLeft: '1px solid #ccc', height: 20 }} />
           <Link to="/admin">Admin</Link>
         </nav>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
+          <NotificationBell />
           <span>{me.user.email}</span>
           {me.memberships.length > 0 && (
             <select

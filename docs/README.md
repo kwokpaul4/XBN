@@ -18,6 +18,10 @@ Runnable UATs that gate each phase milestone:
 - **[`uat-phase-2.sh`](./uat-phase-2.sh)** — Executable companion. Drives the API end-to-end and asserts each step (~30 s).
 - **[`UAT_PHASE_3.md`](./UAT_PHASE_3.md)** — Phase 3 (M3) acceptance manual: five scenarios, 27 assertions covering the direct-materials SCC choreography (Scheduling Agreement / Consignment Contract / Subcontracting Agreement anchors, Forecast Collaboration, SA Releases, **and the polymorphic-predecessor cross-phase test — Phase 2 ASN ships against a JIT release**).
 - **[`uat-phase-3.sh`](./uat-phase-3.sh)** — Executable companion (~15 s).
+- **[`UAT_PHASE_4.md`](./UAT_PHASE_4.md)** — Phase 4 (M4) acceptance manual: five scenarios, 36 assertions covering cross-type search + filters, counterparties directory, buyer + supplier dashboards, live-computed scorecards with honest `null` sentinels, and the notification outbox bidirectional flow.
+- **[`uat-phase-4.sh`](./uat-phase-4.sh)** — Executable companion (~15 s).
+- **[`UAT_PHASE_5.md`](./UAT_PHASE_5.md)** — Phase 5 (M5) acceptance manual: five scenarios, 28 assertions covering `/health` + `/ready` probes, `x-request-id` correlation, `/network/audit-log` scoping, CI/CD + Docker artifacts, and the Phase 5.4 doc surface.
+- **[`uat-phase-5.sh`](./uat-phase-5.sh)** — Executable companion (~10 s).
 
 ## Quick links
 

@@ -35,6 +35,8 @@ const TYPED_DETAIL_ROUTES: Record<string, (role: 'buyer' | 'supplier', id: strin
   PO: (role, id) => `/${role}/po/${id}`,
   PO_CHANGE: (role, id) => `/${role}/po-change/${id}`,
   ORDER_CONFIRMATION: (role, id) => `/${role}/order-confirmation/${id}`,
+  // Every other type (ASN, GR, INVOICE, CREDIT_MEMO, REMITTANCE_ADVICE,
+  // and all Phase 3 SCC types) uses the generic /documents/:id viewer.
 };
 
 export function InboxOutboxPage(): React.ReactElement {

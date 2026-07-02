@@ -35,12 +35,22 @@ export function Layout(): React.ReactElement {
           <Link to="/buyer">Buyer</Link>
           <Link to="/buyer/dashboard">Dashboard</Link>
           <Link to="/buyer/inbox">Inbox</Link>
+          <Link to="/buyer/po/new">+ PO</Link>
+          <Link to="/buyer/goods-receipt/new">+ GR</Link>
+          <Link to="/buyer/remittance/new">+ Remit</Link>
+          <Link to="/buyer/sa/new">+ SA</Link>
+          <Link to="/buyer/forecast/new">+ Fcst</Link>
+          <Link to="/buyer/sa-release/new">+ Release</Link>
           <Link to="/buyer/counterparties">Partners</Link>
           <Link to="/buyer/scorecards">Scorecards</Link>
           <span style={{ borderLeft: '1px solid #ccc', height: 20 }} />
           <Link to="/supplier">Supplier</Link>
           <Link to="/supplier/dashboard">Dashboard</Link>
           <Link to="/supplier/inbox">Inbox</Link>
+          <Link to="/supplier/asn/new">+ ASN</Link>
+          <Link to="/supplier/invoice/new">+ Invoice</Link>
+          <Link to="/supplier/credit-memo/new">+ CM</Link>
+          <Link to="/supplier/forecast-commit/new">+ Commit</Link>
           <span style={{ borderLeft: '1px solid #ccc', height: 20 }} />
           <Link to="/admin">Admin</Link>
         </nav>

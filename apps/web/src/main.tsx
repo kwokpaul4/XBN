@@ -9,8 +9,18 @@ import { BuyerDashboardPage } from './pages/BuyerDashboardPage.tsx';
 import { BuyerPoListPage } from './pages/BuyerPoListPage.tsx';
 import { BuyerPortal } from './pages/BuyerPortal.tsx';
 import { CounterpartiesPage } from './pages/CounterpartiesPage.tsx';
+import { CreateAsnPage } from './pages/CreateAsnPage.tsx';
+import { CreateCreditMemoPage } from './pages/CreateCreditMemoPage.tsx';
+import { CreateForecastCommitPage } from './pages/CreateForecastCommitPage.tsx';
+import { CreateForecastPublishPage } from './pages/CreateForecastPublishPage.tsx';
+import { CreateGoodsReceiptPage } from './pages/CreateGoodsReceiptPage.tsx';
+import { CreateInvoicePage } from './pages/CreateInvoicePage.tsx';
 import { CreatePoChangePage } from './pages/CreatePoChangePage.tsx';
 import { CreatePoPage } from './pages/CreatePoPage.tsx';
+import { CreateRemittancePage } from './pages/CreateRemittancePage.tsx';
+import { CreateSaReleasePage } from './pages/CreateSaReleasePage.tsx';
+import { CreateSchedulingAgreementPage } from './pages/CreateSchedulingAgreementPage.tsx';
+import { DocumentDetailPage } from './pages/DocumentDetailPage.tsx';
 import { InboxOutboxPage } from './pages/InboxOutboxPage.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
 import { OrderConfirmationDetailPage } from './pages/OrderConfirmationDetailPage.tsx';
@@ -44,6 +54,13 @@ ReactDOM.createRoot(root).render(
           <Route path="/buyer/po/:id/change" element={<CreatePoChangePage />} />
           <Route path="/buyer/po-change/:id" element={<PoChangeDetailPage />} />
           <Route path="/buyer/order-confirmation/:id" element={<OrderConfirmationDetailPage />} />
+          {/* Phase 2.4–2.8 create forms — buyer side */}
+          <Route path="/buyer/goods-receipt/new" element={<CreateGoodsReceiptPage />} />
+          <Route path="/buyer/remittance/new" element={<CreateRemittancePage />} />
+          {/* Phase 3 SCC create forms — buyer side */}
+          <Route path="/buyer/sa/new" element={<CreateSchedulingAgreementPage />} />
+          <Route path="/buyer/forecast/new" element={<CreateForecastPublishPage />} />
+          <Route path="/buyer/sa-release/new" element={<CreateSaReleasePage />} />
 
           <Route path="/supplier" element={<SupplierPortal />} />
           <Route path="/supplier/dashboard" element={<SupplierDashboardPage />} />
@@ -57,6 +74,15 @@ ReactDOM.createRoot(root).render(
             path="/supplier/order-confirmation/:id"
             element={<OrderConfirmationDetailPage />}
           />
+          {/* Phase 2.4–2.8 create forms — supplier side */}
+          <Route path="/supplier/asn/new" element={<CreateAsnPage />} />
+          <Route path="/supplier/invoice/new" element={<CreateInvoicePage />} />
+          <Route path="/supplier/credit-memo/new" element={<CreateCreditMemoPage />} />
+          {/* Phase 3 SCC create forms — supplier side */}
+          <Route path="/supplier/forecast-commit/new" element={<CreateForecastCommitPage />} />
+
+          {/* Generic document viewer for any type without a bespoke detail page. */}
+          <Route path="/documents/:id" element={<DocumentDetailPage />} />
 
           <Route path="/admin" element={<AdminPanel />} />
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,0 +1,107 @@
+# CI workflow for XBN (PHASES.md §5.3).
+#
+# Runs on every push and every PR. Boots a Postgres 16 service, applies
+# the Prisma migrations, then runs the four gates in order:
+#   1. lint       — eslint the workspace
+#   2. typecheck  — tsc --noEmit for every workspace project
+#   3. format     — prettier --check
+#   4. test       — vitest, per-package (packages share a test DB with
+#                   truncate-on-beforeEach; running per-package keeps
+#                   them serial and avoids race)
+#
+# We deliberately do NOT run `pnpm -r test` — the packages share the same
+# test database and truncate each other's data when parallelised. Running
+# each package in its own step keeps them serial without needing a
+# per-package DB. Documented in TASKS.md footer.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: xbn
+          POSTGRES_PASSWORD: xbn_dev
+          POSTGRES_DB: xbn
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U xbn"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      minio:
+        image: bitnami/minio:2025
+        env:
+          MINIO_ROOT_USER: xbn
+          MINIO_ROOT_PASSWORD: xbn_dev_minio
+          MINIO_DEFAULT_BUCKETS: xbn-attachments
+        ports:
+          - 9000:9000
+
+    env:
+      DATABASE_URL: postgresql://xbn:xbn_dev@localhost:5432/xbn
+      TEST_DATABASE_URL: postgresql://xbn:xbn_dev@localhost:5432/xbn
+      S3_ENDPOINT: http://localhost:9000
+      S3_ACCESS_KEY: xbn
+      S3_SECRET_KEY: xbn_dev_minio
+      S3_BUCKET: xbn-attachments
+      LOG_LEVEL: silent
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma migrate
+        run: pnpm --filter @xbn/db exec prisma migrate deploy
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      # Serial per-package to avoid the shared-DB race (see comment above).
+      - name: Test — auth
+        run: pnpm --filter @xbn/auth test
+
+      - name: Test — network
+        run: pnpm --filter @xbn/network test
+
+      - name: Test — document-core
+        run: pnpm --filter @xbn/document-core test
+
+      - name: Test — api
+        run: pnpm --filter @xbn/api test
+
+      - name: Build — web
+        run: pnpm --filter @xbn/web build

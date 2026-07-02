@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { addMembership } from '@xbn/auth';
-import type { OrgType, PrismaClient } from '@xbn/db';
+import type { AuditAction, OrgType, PrismaClient } from '@xbn/db';
 import {
   acceptInvitation,
   activateRelationship,
@@ -539,6 +539,78 @@ export function networkRouter(db: PrismaClient): Router {
       data: { status: 'DELIVERED', deliveredAt: new Date() },
     });
     res.json({ ok: true, marked: updated.count });
+  });
+
+  // ---------------------------------------------------------------------
+  // Phase 5.1 — Audit-log explorer
+  //
+  // Read-only surface over the append-only document_audit_log. Any
+  // authenticated user gets rows for documents that touch their active
+  // org (they are either issuer or recipient). NETWORK_ADMIN sees every
+  // row across the network (cross-org visibility per PHASES.md §5.1).
+  //
+  // Filters: documentId, actorUserId, actorOrgId, action, since (ISO),
+  // limit + offset for pagination.
+  // ---------------------------------------------------------------------
+  r.get('/audit-log', async (req, res) => {
+    const ctx = mustAuth(res);
+    if (!ctx) return;
+    if (!ctx.activeMembership) {
+      res.status(403).json({ error: 'no_active_membership' });
+      return;
+    }
+    const orgId = ctx.activeMembership.orgId;
+    const isNetworkAdmin = ctx.activeMembership.role === 'NETWORK_ADMIN';
+
+    const documentId = (req.query.documentId as string | undefined) ?? undefined;
+    const actorUserId = (req.query.actorUserId as string | undefined) ?? undefined;
+    const actorOrgId = (req.query.actorOrgId as string | undefined) ?? undefined;
+    const action = (req.query.action as string | undefined) ?? undefined;
+    const since = (req.query.since as string | undefined) ?? undefined;
+    const limit = Math.min(Number(req.query.limit ?? 100) || 100, 500);
+    const offset = Math.max(Number(req.query.offset ?? 0) || 0, 0);
+
+    // Scope: unless network-admin, restrict to documents the active org
+    // is a party to. We do this via a nested `document` where clause.
+    const scope = isNetworkAdmin
+      ? {}
+      : {
+          document: {
+            OR: [{ issuerOrgId: orgId }, { recipientOrgId: orgId }],
+          },
+        };
+
+    const where = {
+      AND: [
+        scope,
+        ...(documentId ? [{ documentId }] : []),
+        ...(actorUserId ? [{ actorUserId }] : []),
+        ...(actorOrgId ? [{ actorOrgId }] : []),
+        ...(action ? [{ action: action as AuditAction }] : []),
+        ...(since ? [{ occurredAt: { gte: new Date(since) } }] : []),
+      ],
+    };
+
+    const entries = await db.documentAuditLog.findMany({
+      where,
+      orderBy: { occurredAt: 'desc' },
+      take: limit,
+      skip: offset,
+      include: {
+        document: {
+          select: {
+            id: true,
+            documentType: true,
+            documentNumber: true,
+            issuerOrgId: true,
+            recipientOrgId: true,
+          },
+        },
+      },
+    });
+    const total = await db.documentAuditLog.count({ where });
+
+    res.json({ entries, total, limit, offset });
   });
 
   return r;

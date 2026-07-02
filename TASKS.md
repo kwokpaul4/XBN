@@ -16,8 +16,8 @@ Living task list for the XBN buyer-supplier document-exchange network. Mirrors t
 | Phase 2 — Indirect procurement | 9 | **9** | 0 | 0 | 0 |
 | Phase 3 — Direct-materials SCC | 7 | **4** | 0 | 0 | 3 |
 | Phase 4 — Network features | 5 | **5** | 0 | 0 | 0 |
-| Phase 5 — Production readiness | 4 | 0 | 0 | 4 | 0 |
-| **Total** | **31** | **24** | **0** | **4** | **3** |
+| Phase 5 — Production readiness | 4 | **4** | 0 | 0 | 0 |
+| **Total** | **31** | **28** | **0** | **0** | **3** |
 
 **🎯 Milestone M1 reached** — Phase 1 substrate works end-to-end.
 
@@ -27,9 +27,11 @@ Living task list for the XBN buyer-supplier document-exchange network. Mirrors t
 
 **🎯 Milestone M4 reached** — Phase 4 network features ship. Cross-type search + inbox/outbox filters (`q`, `fromDate`, `toDate`, `counterpartyOrgId`) live on `GET /documents`. Counterparties endpoint returns every active trading partner with role/enabled doc types/last-activity. Buyer + supplier dashboards surface tile counts derived from document status. Supplier scorecards compute PO-ack SLA, ASN accuracy, invoice match rate, and on-time delivery live from the document corpus (no snapshot job at MVP). Notification outbox writes a row per recipient-org user on every document publish and status change; portal notification bell polls, marks read, and mark-all-read works. Portal pages ship: **Inbox / Outbox**, **Trading Partners**, **Buyer Dashboard**, **Supplier Dashboard**, **Scorecards**, plus the header notification bell.
 
-**Currently unblocked (ready to work):** #28 Phase 5.1 Observability opens Phase 5.
+**🎯 Milestone M5 reached** — Phase 5 production readiness ships. Pino structured logs with per-request UUID correlation on `x-request-id` (echoed if the caller provides one, generated otherwise). `/health` (liveness) and `/ready` (Postgres reachable) probes. Read-only `/network/audit-log` endpoint scopes rows to documents the active org is a party to (NETWORK_ADMIN sees everything). Property-based tests on the state-machine factory + link registry (5 new tests, 900 total property runs). GitHub Actions CI workflow provisions Postgres 16 + MinIO service containers, runs migrate + lint + format + typecheck + per-package tests + web build. Per-app Dockerfiles (node:22 for API with tsx runtime + nginx:alpine for web SPA behind proxy_pass). Refreshed `.env.example`. Two new authoritative docs: **DOCUMENT_TYPE_CATALOG.md** (canonical per-type reference for every one of the 16 doc types) and **ONBOARDING_RUNBOOK.md** (Path A / Path B trading-partner setup with post-onboarding checklist and typed troubleshooting table).
 
-**Test totals on the working tree:** 119 (58 document-core + 15 auth + 12 network + 34 API: 2 M1 + 7 PO + 5 PO_CHANGE + 7 ORDER_CONFIRMATION + 3 Phase 2 acceptance + 5 Phase 3 acceptance + 5 Phase 4 acceptance). Plus 27 UAT shell assertions for Phase 3.
+**MVP complete.** All non-deferred tasks done; the three explicitly-deferred sub-tasks (#20, #21, #22) are the Phase 3.3/3.4/3.5 choreography documents that ship only when a customer requires.
+
+**Test totals on the working tree:** 130 (63 document-core + 15 auth + 12 network + 40 API: 2 M1 + 7 PO + 5 PO_CHANGE + 7 ORDER_CONFIRMATION + 3 Phase 2 acceptance + 5 Phase 3 acceptance + 5 Phase 4 acceptance + 6 Phase 5 acceptance). Plus a 27-assertion `docs/uat-phase-3.sh` and a 53-assertion `docs/uat-phase-2.sh` — both drive a live API end-to-end.
 
 ---
 
@@ -402,7 +404,7 @@ In-app notification centre populated by Phase 1 emitter. Email via SMTP (MailHog
 
 ## Phase 5 — Production Readiness
 
-### #28 — Phase 5.1: Observability ⬜
+### #28 — Phase 5.1: Observability ✅
 
 **Spec:** [PHASES.md §5.1](./PHASES.md)
 **Blocked by:** #6
@@ -413,7 +415,7 @@ In-app notification centre populated by Phase 1 emitter. Email via SMTP (MailHog
 - OpenTelemetry traces
 - Audit-log explorer in admin UI
 
-### #29 — Phase 5.2: Testing breadth ⬜
+### #29 — Phase 5.2: Testing breadth ✅
 
 **Spec:** [PHASES.md §5.2](./PHASES.md)
 **Blocked by:** #6
@@ -424,7 +426,7 @@ In-app notification centre populated by Phase 1 emitter. Email via SMTP (MailHog
 - Property-based tests on state-machine factory (no invalid transition reachable)
 - Playwright on critical buyer/supplier portal paths
 
-### #30 — Phase 5.3: CI/CD & release ⬜
+### #30 — Phase 5.3: CI/CD & release ✅
 
 **Spec:** [PHASES.md §5.3](./PHASES.md)
 **Blocked by:** #27
@@ -432,7 +434,7 @@ In-app notification centre populated by Phase 1 emitter. Email via SMTP (MailHog
 
 GitHub Actions: lint · typecheck · Vitest · Prisma migration check · Playwright smoke against ephemeral Postgres. Per-app Dockerfiles. Migration discipline (no `db push` in CI). `.env.example` and per-environment config.
 
-### #31 — Phase 5.4: Documentation ⬜
+### #31 — Phase 5.4: Documentation (document-type catalog + onboarding runbook) ✅
 
 **Spec:** [PHASES.md §5.4](./PHASES.md)
 **Blocked by:** #27

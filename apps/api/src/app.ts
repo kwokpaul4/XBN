@@ -4,9 +4,10 @@
  */
 
 import cookieParser from 'cookie-parser';
-import express, { type Application } from 'express';
+import express, { type Application, type Request, type Response } from 'express';
 import type { PrismaClient } from '@xbn/db';
 
+import { logger, requestLogger } from './logger.js';
 import { authRouter } from './routes/auth.js';
 import { documentsRouter } from './routes/documents.js';
 import { meRouter } from './routes/me.js';
@@ -24,6 +25,7 @@ export interface BuildAppOptions {
 
 export function buildApp(db: PrismaClient, options: BuildAppOptions = {}): Application {
   const app = express();
+  app.use(requestLogger);
   app.use(express.json({ limit: '20mb' }));
   app.use(cookieParser());
 
@@ -35,8 +37,21 @@ export function buildApp(db: PrismaClient, options: BuildAppOptions = {}): Appli
     bucket: process.env.S3_BUCKET ?? 'xbn-attachments',
   };
 
+  // PHASES.md §5.1 — health probes.
+  //   /health  liveness (process alive)
+  //   /ready   readiness (Postgres reachable)
   app.get('/health', (_req, res) => {
-    res.json({ ok: true });
+    res.json({ ok: true, service: 'xbn-api' });
+  });
+
+  app.get('/ready', async (_req: Request, res: Response) => {
+    try {
+      await db.$queryRawUnsafe('SELECT 1');
+      res.json({ ok: true, db: 'up' });
+    } catch (err) {
+      logger.error({ err }, 'ready.db_unreachable');
+      res.status(503).json({ ok: false, db: 'unreachable' });
+    }
   });
 
   app.use('/auth', authRouter(db));

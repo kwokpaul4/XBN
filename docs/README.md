@@ -6,6 +6,8 @@ This directory holds operations and reference material for the XBN buyer-supplie
 
 - **[`OPERATIONS.md`](./OPERATIONS.md)** — User operations manual. Step-by-step instructions for everything you can do with XBN today: starting the stack, registering accounts, creating orgs, establishing trading relationships, exchanging documents (indirect procurement + direct-materials SCC), attaching files, etc. Both web-portal and API (curl) flows are covered.
 - **[`API_REFERENCE.md`](./API_REFERENCE.md)** — Endpoint-by-endpoint reference for the HTTP API. Includes the state machine and link registry reference for every document type (Phases 1–3).
+- **[`DOCUMENT_TYPE_CATALOG.md`](./DOCUMENT_TYPE_CATALOG.md)** — The canonical reference for every document type XBN ships: body schema, state machine, valid link rules, per-role permissions. The contract between phases; when two docs disagree, this file wins.
+- **[`ONBOARDING_RUNBOOK.md`](./ONBOARDING_RUNBOOK.md)** — Ordered checklist for bringing a new supplier (or buyer) onto XBN. Two paths: direct (Path A) or invitation-driven (Path B). Includes a post-onboarding checklist and typed troubleshooting table for the first-document scenario.
 - **[`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md)** — Common problems and how to recover.
 
 ## User acceptance tests
